@@ -142,6 +142,9 @@ windows-sys = { version = "0.59", features = [
     # bên macOS, tránh nháy do set_size/set_position riêng lẻ của Tauri là 2
     # lệnh tách rời (xem `windows::resize_capture_bar`).
     "Win32_UI_WindowsAndMessaging",
+    # DPAPI (CryptProtectData/CryptUnprotectData) — mã hoá token Google Drive
+    # lưu trên máy (drive.rs).
+    "Win32_Security_Cryptography",
 ] }
 # Quay video liên tục qua Windows.Graphics.Capture (capture/windows_stream.rs)
 # — crate cấp cao ẩn phần COM/WinRT, tương đương vai trò

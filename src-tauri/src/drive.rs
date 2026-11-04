@@ -5,12 +5,12 @@
 //! Thiết kế: hoàn toàn TÁCH RIÊNG khỏi mọi luồng chụp/quay/lưu cục bộ hiện có
 //! — chỉ là 1 action bổ sung user chủ động bấm ("Chia sẻ qua Drive") trên 1
 //! file ĐÃ lưu cục bộ, không thay đổi hành vi mặc định (vẫn lưu local trước).
-//! Token lưu tại `drive_tokens.json` trong thư mục cấu hình của app — KHÔNG
-//! mã hoá (giới hạn đã biết, xem ghi chú trong README/báo cáo đi kèm).
+//! Token lưu tại `drive_tokens.dat` trong thư mục cấu hình của app, được mã
+//! hoá bằng Windows DPAPI (xem mục "Lưu token được mã hoá" bên dưới).
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
@@ -32,25 +32,164 @@ struct DriveTokens {
     expires_at_ms: u64,
 }
 
-fn tokens_path(app: &AppHandle) -> PathBuf {
-    app.path()
-        .app_config_dir()
-        .unwrap_or_default()
-        .join("drive_tokens.json")
+/* ───────────── Lưu token được mã hoá ─────────────
+ *
+ * Windows: mã hoá bằng DPAPI (`CryptProtectData`, phạm vi người dùng hiện tại +
+ * entropy riêng của app) — file chỉ giải mã được bởi ĐÚNG tài khoản Windows
+ * này trên ĐÚNG máy này; copy file sang máy/người dùng khác là vô dụng. Hệ
+ * điều hành khác chưa có Keychain/Secret Service nên tạm lưu thô (cùng mức độ
+ * bảo vệ như trước, chỉ quyền file của hệ thống).
+ */
+
+const TOKEN_FILE: &str = "drive_tokens.dat";
+/// Tên file định dạng cũ (JSON thô) — tự chuyển sang dạng mã hoá khi gặp.
+const LEGACY_TOKEN_FILE: &str = "drive_tokens.json";
+const MAGIC: &[u8; 4] = b"SDT1";
+const METHOD_PLAIN: u8 = 0;
+const METHOD_DPAPI: u8 = 1;
+#[cfg(windows)]
+const DPAPI_ENTROPY: &[u8] = b"SnapDoc.Drive.Tokens.v1";
+
+#[cfg(windows)]
+fn dpapi_protect(plain: &[u8]) -> Result<Vec<u8>, String> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Cryptography::{
+        CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+    };
+    // SAFETY: các blob trỏ vào slice còn sống suốt lời gọi; `out.pbData` do hệ
+    // thống cấp phát và được giải phóng bằng LocalFree sau khi đã copy ra Vec.
+    unsafe {
+        let input = CRYPT_INTEGER_BLOB { cbData: plain.len() as u32, pbData: plain.as_ptr() as *mut u8 };
+        let entropy = CRYPT_INTEGER_BLOB {
+            cbData: DPAPI_ENTROPY.len() as u32,
+            pbData: DPAPI_ENTROPY.as_ptr() as *mut u8,
+        };
+        let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+        let ok = CryptProtectData(
+            &input,
+            std::ptr::null(),
+            &entropy,
+            std::ptr::null(),
+            std::ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut out,
+        );
+        if ok == 0 || out.pbData.is_null() {
+            return Err("Không mã hoá được token bằng Windows DPAPI".into());
+        }
+        let v = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
+        LocalFree(out.pbData as *mut core::ffi::c_void);
+        Ok(v)
+    }
+}
+
+#[cfg(windows)]
+fn dpapi_unprotect(blob: &[u8]) -> Result<Vec<u8>, String> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Cryptography::{
+        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+    };
+    // SAFETY: như `dpapi_protect`.
+    unsafe {
+        let input = CRYPT_INTEGER_BLOB { cbData: blob.len() as u32, pbData: blob.as_ptr() as *mut u8 };
+        let entropy = CRYPT_INTEGER_BLOB {
+            cbData: DPAPI_ENTROPY.len() as u32,
+            pbData: DPAPI_ENTROPY.as_ptr() as *mut u8,
+        };
+        let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+        let ok = CryptUnprotectData(
+            &input,
+            std::ptr::null_mut(),
+            &entropy,
+            std::ptr::null(),
+            std::ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut out,
+        );
+        if ok == 0 || out.pbData.is_null() {
+            return Err("Không giải mã được token (file không thuộc tài khoản Windows này hoặc đã hỏng)".into());
+        }
+        let v = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
+        LocalFree(out.pbData as *mut core::ffi::c_void);
+        Ok(v)
+    }
+}
+
+fn seal(plain: &[u8]) -> Result<Vec<u8>, String> {
+    #[cfg(windows)]
+    let (method, payload) = (METHOD_DPAPI, dpapi_protect(plain)?);
+    #[cfg(not(windows))]
+    let (method, payload) = (METHOD_PLAIN, plain.to_vec());
+
+    let mut out = Vec::with_capacity(MAGIC.len() + 1 + payload.len());
+    out.extend_from_slice(MAGIC);
+    out.push(method);
+    out.extend_from_slice(&payload);
+    Ok(out)
+}
+
+fn unseal(data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.len() < MAGIC.len() + 1 || &data[..MAGIC.len()] != MAGIC {
+        return Err("File token không hợp lệ".into());
+    }
+    let payload = &data[MAGIC.len() + 1..];
+    match data[MAGIC.len()] {
+        METHOD_PLAIN => Ok(payload.to_vec()),
+        METHOD_DPAPI => {
+            #[cfg(windows)]
+            {
+                dpapi_unprotect(payload)
+            }
+            #[cfg(not(windows))]
+            {
+                Err("Token được mã hoá bằng Windows DPAPI, không đọc được trên hệ điều hành này".to_string())
+            }
+        }
+        _ => Err("Định dạng file token không được hỗ trợ".into()),
+    }
+}
+
+fn write_tokens(dir: &Path, t: &DriveTokens) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(dir);
+    let json = serde_json::to_vec(t).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(TOKEN_FILE), seal(&json)?).map_err(|e| e.to_string())
+}
+
+fn read_tokens(dir: &Path) -> Option<DriveTokens> {
+    if let Ok(bytes) = std::fs::read(dir.join(TOKEN_FILE)) {
+        let plain = unseal(&bytes).ok()?;
+        return serde_json::from_slice(&plain).ok();
+    }
+    // Định dạng cũ (JSON thô): đọc 1 lần, ghi lại dạng mã hoá rồi xoá file thô.
+    let legacy = dir.join(LEGACY_TOKEN_FILE);
+    let content = std::fs::read_to_string(&legacy).ok()?;
+    let t: DriveTokens = serde_json::from_str(&content).ok()?;
+    if write_tokens(dir, &t).is_ok() {
+        let _ = std::fs::remove_file(&legacy);
+    }
+    Some(t)
+}
+
+fn remove_tokens(dir: &Path) -> Result<(), String> {
+    for name in [TOKEN_FILE, LEGACY_TOKEN_FILE] {
+        let p = dir.join(name);
+        if p.exists() {
+            std::fs::remove_file(&p).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn config_dir(app: &AppHandle) -> PathBuf {
+    app.path().app_config_dir().unwrap_or_default()
 }
 
 fn load_tokens(app: &AppHandle) -> Option<DriveTokens> {
-    let content = std::fs::read_to_string(tokens_path(app)).ok()?;
-    serde_json::from_str(&content).ok()
+    read_tokens(&config_dir(app))
 }
 
 fn save_tokens(app: &AppHandle, t: &DriveTokens) -> Result<(), String> {
-    let path = tokens_path(app);
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let content = serde_json::to_string_pretty(t).map_err(|e| e.to_string())?;
-    std::fs::write(&path, content).map_err(|e| e.to_string())
+    write_tokens(&config_dir(app), t)
 }
 
 fn now_ms() -> u64 {
@@ -333,11 +472,7 @@ pub fn drive_is_connected(app: AppHandle) -> bool {
 
 #[tauri::command]
 pub fn drive_disconnect(app: AppHandle) -> Result<(), String> {
-    let path = tokens_path(&app);
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    remove_tokens(&config_dir(&app))
 }
 
 #[tauri::command]
@@ -345,4 +480,105 @@ pub async fn drive_upload(app: AppHandle, file_path: String, file_name: String) 
     tauri::async_runtime::spawn_blocking(move || upload_blocking(&app, file_path, file_name))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample() -> DriveTokens {
+        DriveTokens {
+            client_id: "id.apps.googleusercontent.com".into(),
+            client_secret: "GOCSPX-test-secret-value".into(),
+            refresh_token: "1//refresh-token-very-secret".into(),
+            access_token: "ya29.access-token".into(),
+            expires_at_ms: 1_700_000_000_000,
+        }
+    }
+
+    struct Tmp(PathBuf);
+    impl Tmp {
+        fn new() -> Self {
+            let p = std::env::temp_dir().join(format!("snapdoc_drive_test_{}", uuid::Uuid::new_v4().simple()));
+            std::fs::create_dir_all(&p).unwrap();
+            Tmp(p)
+        }
+    }
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn seal_unseal_roundtrip() {
+        let sealed = seal(b"hello token").unwrap();
+        assert_eq!(unseal(&sealed).unwrap(), b"hello token");
+    }
+
+    #[test]
+    fn rejects_bad_header_and_unknown_method() {
+        assert!(unseal(b"nope").is_err());
+        assert!(unseal(b"XXXX\x01abc").is_err());
+        assert!(unseal(b"SDT1\x09abc").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dpapi_blob_hides_plaintext_and_detects_tampering() {
+        let secret = b"1//refresh-token-very-secret";
+        let sealed = seal(secret).unwrap();
+        assert_eq!(sealed[MAGIC.len()], METHOD_DPAPI);
+        assert!(
+            !sealed.windows(secret.len()).any(|w| w == secret),
+            "blob mã hoá không được chứa token ở dạng thô"
+        );
+        let mut tampered = sealed.clone();
+        let last = tampered.len() - 1;
+        tampered[last] ^= 0xFF;
+        assert!(unseal(&tampered).is_err(), "blob bị sửa phải bị từ chối");
+    }
+
+    #[test]
+    fn write_then_read_roundtrip_and_file_is_not_plain_json() {
+        let tmp = Tmp::new();
+        write_tokens(&tmp.0, &sample()).unwrap();
+        let raw = std::fs::read(tmp.0.join(TOKEN_FILE)).unwrap();
+        if cfg!(windows) {
+            assert!(!String::from_utf8_lossy(&raw).contains("refresh-token-very-secret"));
+        }
+        let back = read_tokens(&tmp.0).unwrap();
+        assert_eq!(back.refresh_token, "1//refresh-token-very-secret");
+        assert_eq!(back.expires_at_ms, 1_700_000_000_000);
+    }
+
+    #[test]
+    fn migrates_legacy_plaintext_json_and_deletes_it() {
+        let tmp = Tmp::new();
+        let legacy = tmp.0.join(LEGACY_TOKEN_FILE);
+        std::fs::write(&legacy, serde_json::to_string_pretty(&sample()).unwrap()).unwrap();
+
+        let got = read_tokens(&tmp.0).expect("phải đọc được file cũ");
+        assert_eq!(got.access_token, "ya29.access-token");
+        assert!(!legacy.exists(), "file JSON thô phải bị xoá sau khi chuyển đổi");
+        assert!(tmp.0.join(TOKEN_FILE).exists());
+        // Lần đọc sau dùng file đã mã hoá.
+        assert_eq!(read_tokens(&tmp.0).unwrap().refresh_token, got.refresh_token);
+    }
+
+    #[test]
+    fn remove_tokens_deletes_both_formats() {
+        let tmp = Tmp::new();
+        write_tokens(&tmp.0, &sample()).unwrap();
+        std::fs::write(tmp.0.join(LEGACY_TOKEN_FILE), "{}").unwrap();
+        remove_tokens(&tmp.0).unwrap();
+        assert!(read_tokens(&tmp.0).is_none());
+        assert!(!tmp.0.join(TOKEN_FILE).exists() && !tmp.0.join(LEGACY_TOKEN_FILE).exists());
+    }
+
+    #[test]
+    fn missing_directory_means_not_connected() {
+        let tmp = Tmp::new();
+        assert!(read_tokens(&tmp.0.join("does-not-exist")).is_none());
+    }
 }
