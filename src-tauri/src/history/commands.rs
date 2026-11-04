@@ -662,6 +662,7 @@ fn trim_history_video_sync(
     overlays: Option<&[crate::record::encoder::VideoOverlay]>,
     zoom_segments: Option<&[crate::record::encoder::ZoomSegment]>,
     crop: Option<crate::record::encoder::VideoCrop>,
+    captions: Option<&crate::captions::CaptionExport>,
 ) -> Result<HistoryRecord, String> {
     let rec = get_history_item_sync(app, id)?;
     if rec.media_type != "video" {
@@ -734,6 +735,23 @@ fn trim_history_video_sync(
                 let _ = progress_app.emit("trim-progress", frac);
             },
         )?;
+    }
+
+    // Ghi phụ đề lên bản VỪA dựng (mốc phụ đề đã theo timeline của bản này, xem
+    // `captionUtils.mapCaptionsToTimeline`). Lỗi/huỷ → xoá file vừa tạo để không
+    // để lại video dở dang ngoài History.
+    if let Some(req) = captions.filter(|c| !c.segments.is_empty()) {
+        let edited_ms: i64 = keep_ranges_ms
+            .iter()
+            .map(|(s, e, speed)| {
+                let sp = if *speed > 0.01 { *speed } else { 1.0 };
+                (((*e - *s).max(0) as f64) / sp).round() as i64
+            })
+            .sum();
+        if let Err(e) = crate::captions::apply_to_file(app, &new_path, req, edited_ms.max(0) as u64) {
+            let _ = std::fs::remove_file(&new_path);
+            return Err(e);
+        }
     }
 
     // Không sao chép telemetry chuột sang video mới nếu đã burn zoom hoặc đã tắt focus
@@ -1205,6 +1223,7 @@ pub async fn trim_history_video(
     overlays: Option<Vec<crate::record::encoder::VideoOverlay>>,
     zoom_segments: Option<Vec<crate::record::encoder::ZoomSegment>>,
     crop: Option<crate::record::encoder::VideoCrop>,
+    captions: Option<crate::captions::CaptionExport>,
 ) -> Result<HistoryRecord, String> {
     let int_ranges: Vec<(i64, i64, f64)> = ranges
         .into_iter()
@@ -1221,6 +1240,7 @@ pub async fn trim_history_video(
             overlays.as_deref(),
             zoom_segments.as_deref(),
             crop,
+            captions.as_ref(),
         )
     })
     .await

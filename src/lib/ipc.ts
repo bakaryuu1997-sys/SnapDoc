@@ -280,8 +280,16 @@ export interface CaptionsStatus {
   models: CaptionModelStatus[];
 }
 
+/** Ghi phụ đề lên video đã chỉnh sửa ngay trong lúc xuất (mốc thời gian theo timeline ĐÃ chỉnh sửa). */
+export interface CaptionBurnRequest {
+  segments: CaptionSegment[];
+  mode: "soft" | "burn";
+  language: string;
+}
+
 export interface CaptionsProgress {
-  stage: "engine" | "model" | "audio" | "transcribe" | "export";
+  /** "edit" chỉ do frontend tự dựng từ sự kiện `trim-progress` (áp chỉnh sửa trước khi ghi phụ đề). */
+  stage: "engine" | "model" | "audio" | "transcribe" | "export" | "edit";
   percent: number;
   doneBytes: number;
   totalBytes: number;
@@ -588,6 +596,7 @@ export const ipc = {
     overlays?: VideoOverlayItem[],
     zoomSegments?: ZoomSegment[],
     crop?: VideoCrop | null,
+    captions?: CaptionBurnRequest | null,
   ) =>
     invoke<HistoryItem>("trim_history_video", {
       id,
@@ -597,6 +606,7 @@ export const ipc = {
       overlays: sanitizeOverlays(overlays),
       zoomSegments: zoomSegments && zoomSegments.length > 0 ? zoomSegments : null,
       crop: sanitizeCrop(crop),
+      captions: captions && captions.segments.length > 0 ? captions : null,
     }),
   /** Cắt 1 video ĐÃ LƯU trong History, ghi ĐÈ TẠI CHỖ asset/thumbnail của
    * ĐÚNG item đó — lựa chọn "Lưu đè bản gốc" ở Editor. Vĩnh viễn, không giữ

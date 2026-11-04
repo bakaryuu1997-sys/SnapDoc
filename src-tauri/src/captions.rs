@@ -813,6 +813,75 @@ fn export_burn(
     Ok(())
 }
 
+/// Yêu cầu ghi phụ đề lên video vừa được dựng xong (xuất bản ĐÃ chỉnh sửa).
+/// `segments` có mốc thời gian theo timeline CỦA VIDEO ĐÃ CHỈNH SỬA.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionExport {
+    pub segments: Vec<CaptionSegment>,
+    /// "soft" | "burn"
+    pub mode: String,
+    pub language: String,
+}
+
+/// Ghi phụ đề lên `file` và thay thế tại chỗ (ghi ra file tạm cạnh đó rồi đổi
+/// tên — lỗi/huỷ giữa chừng không làm hỏng file gốc).
+fn apply_captions_in_place(
+    ffmpeg: &Path,
+    file: &Path,
+    segments: &[CaptionSegment],
+    mode: &str,
+    lang: &str,
+    duration_ms: u64,
+    on_progress: impl FnMut(u32),
+) -> Result<(), String> {
+    let tmp = TempDir::new()?;
+    let srt = tmp.0.join("captions.srt");
+    fs::write(&srt, format_srt(segments)).map_err(|e| format!("Không ghi được SRT tạm: {e}"))?;
+    let staged = file.with_extension("captions.part.mp4");
+    let result = if mode == "soft" {
+        export_soft(ffmpeg, file, &srt, &staged, lang)
+    } else {
+        export_burn(ffmpeg, file, &tmp.0, &staged, duration_ms, on_progress)
+    };
+    if let Err(e) = result {
+        let _ = fs::remove_file(&staged);
+        return Err(e);
+    }
+    // `fs::rename` trên Windows thay thế file đích đã tồn tại.
+    fs::rename(&staged, file).map_err(|e| {
+        let _ = fs::remove_file(&staged);
+        format!("Không lưu được video có phụ đề: {e}")
+    })
+}
+
+/// Dùng bởi `history::commands::trim_history_video`: sau khi bản đã chỉnh sửa
+/// được dựng xong thì ghi phụ đề lên chính file đó (trước khi vào History).
+pub(crate) fn apply_to_file(
+    app: &AppHandle,
+    file: &Path,
+    req: &CaptionExport,
+    duration_ms: u64,
+) -> Result<(), String> {
+    ensure_supported()?;
+    if req.mode != "soft" && req.mode != "burn" {
+        return Err(format!("Chế độ xuất phụ đề không hợp lệ: {}", req.mode));
+    }
+    let lang = validate_lang(&req.language)?;
+    if format_srt(&req.segments).is_empty() {
+        return Ok(());
+    }
+    let _guard = JobGuard::acquire()?;
+    let ffmpeg = crate::record::encoder::sidecar_path("ffmpeg")?;
+    emit_progress(app, "export", 0, 100);
+    let a = app.clone();
+    apply_captions_in_place(&ffmpeg, file, &req.segments, &req.mode, &lang, duration_ms, move |p| {
+        emit_progress(&a, "export", p as u64, 100)
+    })?;
+    emit_progress(app, "export", 100, 100);
+    Ok(())
+}
+
 /* ───────────── Tauri commands ───────────── */
 
 fn emit_progress(app: &AppHandle, stage: &'static str, done: u64, total: u64) {
@@ -1162,5 +1231,26 @@ mod tests {
         export_burn(&ffmpeg, &video, &tmp.0, &burn, 12_000, |p| seen = p).expect("burn");
         assert!(burn.metadata().unwrap().len() > 1_000);
         println!("burn progress max seen: {seen}");
+
+        // Đường dùng khi xuất video ĐÃ chỉnh sửa: ghi phụ đề tại chỗ lên 1 file có sẵn.
+        let inplace = tmp.0.join("inplace.mp4");
+        fs::copy(&video, &inplace).unwrap();
+        let before = inplace.metadata().unwrap().len();
+        apply_captions_in_place(&ffmpeg, &inplace, &segs, "soft", "en", 12_000, |_| {}).expect("in-place soft");
+        assert_ne!(inplace.metadata().unwrap().len(), before, "file phải được thay bằng bản có phụ đề");
+        assert!(!inplace.with_extension("captions.part.mp4").exists(), "không để lại file tạm");
+        // Thất bại không được để lại file tạm.
+        let missing = tmp.0.join("missing.mp4");
+        assert!(apply_captions_in_place(&ffmpeg, &missing, &segs, "burn", "en", 1_000, |_| {}).is_err());
+        assert!(!missing.with_extension("captions.part.mp4").exists());
+    }
+
+    #[test]
+    fn caption_export_deserializes_frontend_payload() {
+        let json = r#"{"segments":[{"startMs":0,"endMs":1500,"text":"Xin chào"}],"mode":"burn","language":"vi"}"#;
+        let req: CaptionExport = serde_json::from_str(json).unwrap();
+        assert_eq!(req.mode, "burn");
+        assert_eq!(req.language, "vi");
+        assert_eq!(req.segments, vec![seg(0, 1_500, "Xin chào")]);
     }
 }

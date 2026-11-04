@@ -1,8 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ipc, type KeepRange } from "../../lib/ipc";
+import { ipc, type CaptionSegment, type KeepRange } from "../../lib/ipc";
 import GifExportModal from "./GifExportModal";
-import CaptionsModal from "./CaptionsModal";
+import CaptionsModal, { type CaptionEditPayload } from "./CaptionsModal";
+import {
+  CAPTIONS_PREVIEW_KEY,
+  activeCaptionAt,
+  loadCachedCaptions,
+  saveCachedCaptions,
+} from "./captionUtils";
 import {
   type Segment,
   MIN_SEG_MS,
@@ -576,6 +582,58 @@ export default function VideoTrimmer({
   const [overlayTool, setOverlayTool] = useState<VideoOverlayTool>("select");
   const [gifModalOpen, setGifModalOpen] = useState(false);
   const [captionsOpen, setCaptionsOpen] = useState(false);
+  // Phụ đề (mốc theo video GỐC): state nằm ở đây để trình phát hiện được phụ đề
+  // kể cả khi modal đóng; modal chỉ tạo mới/chỉnh sửa qua `onChange`.
+  const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>(
+    () => loadCachedCaptions(filePath)?.segments ?? [],
+  );
+  const [captionLang, setCaptionLang] = useState<string>(() => loadCachedCaptions(filePath)?.language ?? "auto");
+  const [showCaptionsOnPlayer, setShowCaptionsOnPlayer] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(CAPTIONS_PREVIEW_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [currentCaption, setCurrentCaption] = useState("");
+
+  useEffect(() => {
+    const c = loadCachedCaptions(filePath);
+    setCaptionSegments(c?.segments ?? []);
+    setCaptionLang(c?.language ?? "auto");
+  }, [filePath]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => saveCachedCaptions(filePath, captionLang, captionSegments), 400);
+    return () => window.clearTimeout(id);
+  }, [filePath, captionLang, captionSegments]);
+
+  // Dòng phụ đề đang hiển thị theo vị trí phát THỰC của video (mốc gốc) — nên tự
+  // khớp với các đoạn đã cắt/đổi tốc độ vì trình phát vốn bỏ qua đoạn bị cắt.
+  useEffect(() => {
+    if (!showCaptionsOnPlayer || captionSegments.length === 0) {
+      setCurrentCaption("");
+      return;
+    }
+    let raf = 0;
+    const tick = () => {
+      const v = videoRef.current;
+      const text = v ? (activeCaptionAt(captionSegments, v.currentTime * 1000)?.text ?? "") : "";
+      setCurrentCaption((prev) => (prev === text ? prev : text));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [showCaptionsOnPlayer, captionSegments]);
+
+  const handleShowCaptionsOnPlayer = (show: boolean) => {
+    setShowCaptionsOnPlayer(show);
+    try {
+      localStorage.setItem(CAPTIONS_PREVIEW_KEY, show ? "1" : "0");
+    } catch {
+      // bỏ qua
+    }
+  };
   const selectedSegment = useMemo(
     () => segments.find((s) => s.id === selectedSegmentId) ?? null,
     [segments, selectedSegmentId],
@@ -2023,6 +2081,16 @@ export default function VideoTrimmer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasChanges, keepRanges, removeAudio, overlays, zoomSegments, editState.crop]);
 
+  // Cùng bộ tham số "Lưu thành video mới" dùng — để xuất video đã chỉnh sửa kèm
+  // phụ đề từ modal phụ đề (xem `CaptionsModal`).
+  const getEditPayload = (): CaptionEditPayload => ({
+    keepRanges,
+    removeAudio,
+    overlays: prepareOverlaysRef.current(overlays, editState.crop),
+    zoomSegments,
+    crop: editState.crop,
+  });
+
   const editStateRef = useRef(editState);
   editStateRef.current = editState;
   const playheadMsRef = useRef(playheadMs);
@@ -2471,6 +2539,13 @@ export default function VideoTrimmer({
               );
             })()}
           </div>
+
+          {/* Phụ đề (xem trước) — nằm NGOÀI khối phóng to để không bị zoom theo. */}
+          {showCaptionsOnPlayer && currentCaption && (
+            <div style={captionOverlayStyle}>
+              <span style={captionTextStyle}>{currentCaption}</span>
+            </div>
+          )}
         </div>
 
         {isCropMode && (
@@ -3041,6 +3116,18 @@ export default function VideoTrimmer({
         onClose={() => setCaptionsOpen(false)}
         filePath={filePath}
         durationMs={durationMs}
+        segments={captionSegments}
+        language={captionLang}
+        onChange={(segs, lang) => {
+          setCaptionSegments(segs);
+          setCaptionLang(lang);
+        }}
+        showOnPlayer={showCaptionsOnPlayer}
+        onShowOnPlayerChange={handleShowCaptionsOnPlayer}
+        edited={!!hasChanges}
+        timelineSegments={effectiveSegments}
+        sourceHistoryId={sourceHistoryId}
+        getEditPayload={getEditPayload}
         onSeekSource={(srcMs) => {
           const tl = sourceMsToTimeline(effectiveSegments, srcMs);
           if (tl != null) seekTo(tl);
@@ -3152,6 +3239,29 @@ function CameraIcon() {
     </svg>
   );
 }
+
+const captionOverlayStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: "9%",
+  display: "flex",
+  justifyContent: "center",
+  padding: "0 6%",
+  pointerEvents: "none",
+  zIndex: 5,
+};
+
+const captionTextStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  textAlign: "center",
+  color: "#fff",
+  fontSize: "clamp(13px, 2.1vw, 26px)",
+  fontWeight: 600,
+  lineHeight: 1.35,
+  textShadow: "-1.5px 0 #000, 1.5px 0 #000, 0 -1.5px #000, 0 1.5px #000, 0 2px 6px rgba(0,0,0,0.7)",
+  wordBreak: "break-word",
+};
 
 function CaptionsIcon() {
   return (

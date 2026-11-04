@@ -716,6 +716,13 @@
     "stageAudio": "Extracting audio…",
     "stageTranscribe": "Recognizing speech…",
     "stageExport": "Exporting video…",
-    "note": "Captions are generated from the original video file that is open — cuts/speed changes made in the editor are not applied. Save the edited video first if you want captions to match the trimmed version."
+    "note": "Captions are generated from the video file that is open. When you cut or change speed, caption timing is matched automatically on export.",
+    "previewOnPlayer": "Show captions on the player",
+    "matchEdits": "Make the .srt match the edited video (cuts/speed)",
+    "noneKept": "No captions fall inside the part of the video that is kept.",
+    "needHistory": "This video is not in the Library, so it cannot be exported with edits — save the edited video first.",
+    "savedEditedVideo": "Edited video with captions exported",
+    "stageEdit": "Applying edits to the video…",
+    "editedExportHint": "This video has edits: exporting applies the current edits (cuts, speed, zoom, crop, annotations) and then burns captions onto that result; caption timing is matched automatically."
   }
 }

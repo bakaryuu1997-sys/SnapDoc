@@ -7,8 +7,21 @@ import {
   type CaptionSegment,
   type CaptionsProgress,
   type CaptionsStatus,
+  type KeepRange,
 } from "../../lib/ipc";
 import { dirnameOf, promptSaveVideoPath } from "../output/useOutput";
+import type { Segment } from "./segments";
+import type { VideoCrop, VideoOverlayItem, ZoomSegment } from "./types";
+import { mapCaptionsToTimeline } from "./captionUtils";
+
+/** Các tham số y hệt "Lưu thành video mới" dùng để dựng bản đã chỉnh sửa. */
+export interface CaptionEditPayload {
+  keepRanges: KeepRange[];
+  removeAudio: boolean;
+  overlays: VideoOverlayItem[];
+  zoomSegments: ZoomSegment[];
+  crop: VideoCrop | null;
+}
 
 export interface CaptionsModalProps {
   open: boolean;
@@ -16,6 +29,20 @@ export interface CaptionsModalProps {
   /** Đường dẫn file video thật trên đĩa (nguồn để nhận diện giọng nói). */
   filePath: string;
   durationMs: number;
+  /** Phụ đề hiện có (mốc thời gian theo video GỐC) + ngôn ngữ của chúng. */
+  segments: CaptionSegment[];
+  language: string;
+  onChange: (segments: CaptionSegment[], language: string) => void;
+  /** Hiện phụ đề ngay trên trình phát. */
+  showOnPlayer: boolean;
+  onShowOnPlayerChange: (show: boolean) => void;
+  /** Video đang có chỉnh sửa (cắt/tốc độ/overlay/zoom/crop) so với file gốc. */
+  edited: boolean;
+  /** Các đoạn hiệu lực (đã gồm tốc độ) — dùng để quy mốc gốc → timeline đã chỉnh. */
+  timelineSegments: Segment[];
+  /** Id History của video — cần để xuất bản ĐÃ chỉnh sửa kèm phụ đề. */
+  sourceHistoryId?: string;
+  getEditPayload: () => CaptionEditPayload;
   /** Nhảy tới mốc thời gian (ms) trên video GỐC khi bấm vào 1 dòng phụ đề. */
   onSeekSource?: (srcMs: number) => void;
   onFlash?: (msg: string) => void;
@@ -44,12 +71,6 @@ const MODEL_ORDER = ["small", "turbo", "base"] as const;
 
 const LANG_KEY = "snapdoc.captions.lang";
 const MODEL_KEY = "snapdoc.captions.model";
-const cacheKey = (filePath: string) => `snapdoc.captions.v1:${filePath}`;
-
-interface CachedCaptions {
-  language: string;
-  segments: CaptionSegment[];
-}
 
 function readLS(key: string): string | null {
   try {
@@ -88,6 +109,15 @@ export default function CaptionsModal({
   onClose,
   filePath,
   durationMs,
+  segments,
+  language,
+  onChange,
+  showOnPlayer,
+  onShowOnPlayerChange,
+  edited,
+  timelineSegments,
+  sourceHistoryId,
+  getEditPayload,
   onSeekSource,
   onFlash,
 }: CaptionsModalProps) {
@@ -100,9 +130,8 @@ export default function CaptionsModal({
 
   const [status, setStatus] = useState<CaptionsStatus | null>(null);
   const [modelId, setModelId] = useState<string>(() => readLS(MODEL_KEY) ?? "small");
-  const [language, setLanguage] = useState<string>(() => readLS(LANG_KEY) ?? "auto");
-  const [segments, setSegments] = useState<CaptionSegment[]>([]);
-  const [resultLang, setResultLang] = useState<string>("auto");
+  const [spoken, setSpoken] = useState<string>(() => readLS(LANG_KEY) ?? "auto");
+  const [matchEdits, setMatchEdits] = useState(true);
   const [job, setJob] = useState<Job>(null);
   const [progress, setProgress] = useState<CaptionsProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,10 +141,8 @@ export default function CaptionsModal({
       .captionsStatus()
       .then((s) => {
         setStatus(s);
-        // Chưa chọn gì rõ ràng: ưu tiên model đã cài.
         setModelId((cur) => {
-          const curInstalled = s.models.find((m) => m.id === cur)?.installed;
-          if (curInstalled) return cur;
+          if (s.models.find((m) => m.id === cur)?.installed) return cur;
           const firstInstalled = MODEL_ORDER.find((id) => s.models.find((m) => m.id === id)?.installed);
           return firstInstalled ?? cur;
         });
@@ -127,33 +154,27 @@ export default function CaptionsModal({
     if (!open) return;
     setError(null);
     refreshStatus();
-    const raw = readLS(cacheKey(filePath));
-    if (raw) {
-      try {
-        const c = JSON.parse(raw) as CachedCaptions;
-        if (Array.isArray(c.segments)) {
-          setSegments(c.segments);
-          setResultLang(c.language || "auto");
-        }
-      } catch {
-        // cache hỏng — bỏ qua
-      }
-    } else {
-      setSegments([]);
-    }
-  }, [open, filePath, refreshStatus]);
+  }, [open, refreshStatus]);
 
   useEffect(() => {
     if (!open) return;
     let disposed = false;
-    let unlisten: (() => void) | undefined;
-    listen<CaptionsProgress>("captions-progress", (e) => setProgress(e.payload)).then((fn) => {
-      if (disposed) fn();
-      else unlisten = fn;
-    });
+    const unlistens: Array<() => void> = [];
+    const track = (p: Promise<() => void>) =>
+      p.then((fn) => {
+        if (disposed) fn();
+        else unlistens.push(fn);
+      });
+    track(listen<CaptionsProgress>("captions-progress", (e) => setProgress(e.payload)));
+    // Tiến độ bước "áp dụng chỉnh sửa" (cắt/tốc độ/overlay) trước khi ghi phụ đề.
+    track(
+      listen<number>("trim-progress", (e) =>
+        setProgress({ stage: "edit", percent: Math.round(Math.min(1, Math.max(0, e.payload)) * 100), doneBytes: 0, totalBytes: 0 }),
+      ),
+    );
     return () => {
       disposed = true;
-      unlisten?.();
+      unlistens.forEach((fn) => fn());
     };
   }, [open]);
 
@@ -166,21 +187,10 @@ export default function CaptionsModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, job, onClose]);
 
-  const persist = useCallback(
-    (segs: CaptionSegment[], lang: string) => {
-      writeLS(cacheKey(filePath), JSON.stringify({ language: lang, segments: segs } satisfies CachedCaptions));
-    },
-    [filePath],
-  );
-
-  const updateSegments = (next: CaptionSegment[]) => {
-    setSegments(next);
-    persist(next, resultLang);
-  };
-
   const modelInstalled = !!status?.models.find((m) => m.id === modelId)?.installed;
   const ready = !!status?.engineInstalled && modelInstalled;
   const busy = job !== null;
+  const hasCaptions = segments.length > 0;
 
   const run = async (kind: Exclude<Job, null>, fn: () => Promise<void>) => {
     setJob(kind);
@@ -205,12 +215,10 @@ export default function CaptionsModal({
 
   const doGenerate = () =>
     run("transcribe", async () => {
-      writeLS(LANG_KEY, language);
+      writeLS(LANG_KEY, spoken);
       writeLS(MODEL_KEY, modelId);
-      const res = await ipc.captionsTranscribe(filePath, language, modelId);
-      setSegments(res.segments);
-      setResultLang(res.language);
-      persist(res.segments, res.language);
+      const res = await ipc.captionsTranscribe(filePath, spoken, modelId);
+      onChange(res.segments, res.language);
     });
 
   const defaultDir = async (): Promise<string> => {
@@ -223,12 +231,22 @@ export default function CaptionsModal({
     );
   };
 
+  /** Phụ đề dùng khi xuất .srt: theo timeline ĐÃ chỉnh sửa (nếu người dùng chọn) hoặc theo video gốc. */
+  const srtSegments = useMemo(
+    () => (edited && matchEdits ? mapCaptionsToTimeline(segments, timelineSegments) : segments),
+    [edited, matchEdits, segments, timelineSegments],
+  );
+
   const doCopy = async () => {
     await ipc.copyText(segments.map((s) => s.text).join("\n"));
     onFlash?.(tt("copied", "Đã copy nội dung phụ đề"));
   };
 
   const doSaveSrt = async () => {
+    if (srtSegments.length === 0) {
+      setError(tt("noneKept", "Không còn phụ đề nào nằm trong phần video được giữ lại."));
+      return;
+    }
     const dir = await defaultDir();
     const path = await save({
       defaultPath: `${dir}/${stemOf(filePath)}.srt`,
@@ -237,7 +255,7 @@ export default function CaptionsModal({
     if (!path) return;
     setError(null);
     try {
-      await ipc.captionsSaveSrt(path, segments);
+      await ipc.captionsSaveSrt(path, srtSegments);
       onFlash?.(tt("savedSrt", "Đã lưu file phụ đề (.srt)"));
     } catch (e) {
       setError(String(e));
@@ -245,11 +263,38 @@ export default function CaptionsModal({
   };
 
   const doExportVideo = async (mode: "soft" | "burn") => {
+    // Có chỉnh sửa: xuất BẢN ĐÃ chỉnh sửa (cùng pipeline "Lưu thành video mới")
+    // rồi ghi phụ đề — mốc phụ đề đã được quy sang timeline mới.
+    if (edited) {
+      if (!sourceHistoryId) {
+        setError(tt("needHistory", "Video này không nằm trong Thư viện nên chưa xuất kèm chỉnh sửa được — hãy lưu video đã chỉnh sửa trước."));
+        return;
+      }
+      const mapped = mapCaptionsToTimeline(segments, timelineSegments);
+      if (mapped.length === 0) {
+        setError(tt("noneKept", "Không còn phụ đề nào nằm trong phần video được giữ lại."));
+        return;
+      }
+      const dir = await defaultDir();
+      const path = await promptSaveVideoPath(`${dir}/${stemOf(filePath)}_captions.mp4`);
+      if (!path) return;
+      await run("export", async () => {
+        const p = getEditPayload();
+        await ipc.trimHistoryVideo(sourceHistoryId, p.keepRanges, p.removeAudio, path, p.overlays, p.zoomSegments, p.crop, {
+          segments: mapped,
+          mode,
+          language,
+        });
+        onFlash?.(tt("savedEditedVideo", "Đã xuất video đã chỉnh sửa kèm phụ đề"));
+      });
+      return;
+    }
+
     const dir = await defaultDir();
     const path = await promptSaveVideoPath(`${dir}/${stemOf(filePath)}_captions.mp4`);
     if (!path) return;
     await run("export", async () => {
-      await ipc.captionsExportVideo(filePath, path, segments, mode, resultLang, durationMs);
+      await ipc.captionsExportVideo(filePath, path, segments, mode, language, durationMs);
       onFlash?.(tt("savedVideo", "Đã xuất video có phụ đề"));
     });
   };
@@ -265,6 +310,8 @@ export default function CaptionsModal({
         return tt("stageAudio", "Đang tách âm thanh…");
       case "transcribe":
         return tt("stageTranscribe", "Đang nhận diện giọng nói…");
+      case "edit":
+        return tt("stageEdit", "Đang áp dụng chỉnh sửa vào video…");
       default:
         return tt("stageExport", "Đang xuất video…");
     }
@@ -273,6 +320,12 @@ export default function CaptionsModal({
   if (!open) return null;
 
   const unsupported = status && !status.supported;
+  const modelLabel = (id: string) =>
+    id === "base"
+      ? tt("modelBase", "Nhanh")
+      : id === "small"
+        ? tt("modelSmall", "Cân bằng (khuyên dùng)")
+        : tt("modelTurbo", "Chính xác nhất");
 
   return (
     <div style={overlayStyle} onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -312,13 +365,7 @@ export default function CaptionsModal({
                       disabled={busy}
                       onChange={() => setModelId(m.id)}
                     />
-                    <span style={{ flex: 1 }}>
-                      {m.id === "base"
-                        ? tt("modelBase", "Nhanh")
-                        : m.id === "small"
-                          ? tt("modelSmall", "Cân bằng (khuyên dùng)")
-                          : tt("modelTurbo", "Chính xác nhất")}
-                    </span>
+                    <span style={{ flex: 1 }}>{modelLabel(m.id)}</span>
                     <span style={sizeStyle}>
                       {m.installed ? "✓ " + tt("installed", "đã cài") : fmtMB(m.sizeBytes)}
                     </span>
@@ -335,7 +382,7 @@ export default function CaptionsModal({
             <div style={rowStyle}>
               <div style={{ flex: 1 }}>
                 <div style={labelStyle}>{tt("language", "Ngôn ngữ trong video")}</div>
-                <select style={selectStyle} value={language} disabled={busy} onChange={(e) => setLanguage(e.target.value)}>
+                <select style={selectStyle} value={spoken} disabled={busy} onChange={(e) => setSpoken(e.target.value)}>
                   {LANGS.map((l) => (
                     <option key={l.code} value={l.code}>
                       {l.code === "auto" ? tt("langAuto", l.label) : l.label}
@@ -350,11 +397,7 @@ export default function CaptionsModal({
                     .filter((m) => m.installed)
                     .map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.id === "base"
-                          ? tt("modelBase", "Nhanh")
-                          : m.id === "small"
-                            ? tt("modelSmall", "Cân bằng (khuyên dùng)")
-                            : tt("modelTurbo", "Chính xác nhất")}
+                        {modelLabel(m.id)}
                       </option>
                     ))}
                 </select>
@@ -382,11 +425,35 @@ export default function CaptionsModal({
           {!unsupported && ready && (
             <>
               <button style={primaryBtn} disabled={busy} onClick={doGenerate}>
-                {segments.length > 0 ? tt("regenerate", "Tạo lại phụ đề") : tt("generate", "Tạo phụ đề")}
+                {hasCaptions ? tt("regenerate", "Tạo lại phụ đề") : tt("generate", "Tạo phụ đề")}
               </button>
 
+              {hasCaptions && (
+                <div style={optionsStyle}>
+                  <label style={checkLabel}>
+                    <input
+                      type="checkbox"
+                      checked={showOnPlayer}
+                      onChange={(e) => onShowOnPlayerChange(e.target.checked)}
+                    />
+                    <span>{tt("previewOnPlayer", "Hiện phụ đề ngay trên trình phát")}</span>
+                  </label>
+                  {edited && (
+                    <label style={checkLabel}>
+                      <input
+                        type="checkbox"
+                        checked={matchEdits}
+                        disabled={busy}
+                        onChange={(e) => setMatchEdits(e.target.checked)}
+                      />
+                      <span>{tt("matchEdits", "File .srt khớp với video đã chỉnh sửa (cắt/tốc độ)")}</span>
+                    </label>
+                  )}
+                </div>
+              )}
+
               <div style={listStyle}>
-                {segments.length === 0 ? (
+                {!hasCaptions ? (
                   <div style={emptyStyle}>{tt("empty", "Chưa có phụ đề. Bấm “Tạo phụ đề” để bắt đầu.")}</div>
                 ) : (
                   segments.map((s, i) => (
@@ -403,15 +470,22 @@ export default function CaptionsModal({
                         value={s.text}
                         disabled={busy}
                         onChange={(e) =>
-                          setSegments((prev) => prev.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)))
+                          onChange(
+                            segments.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)),
+                            language,
+                          )
                         }
-                        onBlur={() => persist(segments, resultLang)}
                       />
                       <button
                         style={delBtnStyle}
                         disabled={busy}
                         title={tt("remove", "Xoá dòng này")}
-                        onClick={() => updateSegments(segments.filter((_, j) => j !== i))}
+                        onClick={() =>
+                          onChange(
+                            segments.filter((_, j) => j !== i),
+                            language,
+                          )
+                        }
                       >
                         ✕
                       </button>
@@ -420,31 +494,34 @@ export default function CaptionsModal({
                 )}
               </div>
 
-              {segments.length > 0 && (
-                <div style={actionsStyle}>
-                  <button style={secondaryBtn} disabled={busy} onClick={doCopy}>
-                    📋 {tt("copyText", "Copy nội dung")}
-                  </button>
-                  <button style={secondaryBtn} disabled={busy} onClick={doSaveSrt}>
-                    💾 {tt("saveSrt", "Lưu .srt")}
-                  </button>
-                  <button style={secondaryBtn} disabled={busy} onClick={() => doExportVideo("soft")}>
-                    🎬 {tt("exportSoft", "Xuất video (phụ đề bật/tắt được)")}
-                  </button>
-                  <button style={secondaryBtn} disabled={busy} onClick={() => doExportVideo("burn")}>
-                    🔥 {tt("exportBurn", "Xuất video (ghi cứng vào hình)")}
-                  </button>
-                </div>
+              {hasCaptions && (
+                <>
+                  <div style={actionsStyle}>
+                    <button style={secondaryBtn} disabled={busy} onClick={doCopy}>
+                      📋 {tt("copyText", "Copy nội dung")}
+                    </button>
+                    <button style={secondaryBtn} disabled={busy} onClick={doSaveSrt}>
+                      💾 {tt("saveSrt", "Lưu .srt")}
+                    </button>
+                    <button style={secondaryBtn} disabled={busy} onClick={() => doExportVideo("soft")}>
+                      🎬 {tt("exportSoft", "Xuất video (phụ đề bật/tắt được)")}
+                    </button>
+                    <button style={secondaryBtn} disabled={busy} onClick={() => doExportVideo("burn")}>
+                      🔥 {tt("exportBurn", "Xuất video (ghi cứng vào hình)")}
+                    </button>
+                  </div>
+                  <div style={noteStyle}>
+                    {edited
+                      ? tt(
+                          "editedExportHint",
+                          "Video có chỉnh sửa: xuất video sẽ áp dụng các chỉnh sửa hiện tại (cắt, tốc độ, phóng to, crop, chú thích) rồi ghi phụ đề lên bản đó; mốc phụ đề tự khớp.",
+                        )
+                      : tt("note", "Phụ đề được tạo từ file video đang mở. Khi bạn cắt hoặc đổi tốc độ, mốc phụ đề sẽ tự khớp lúc xuất.")}
+                  </div>
+                </>
               )}
             </>
           )}
-
-          <div style={noteStyle}>
-            {tt(
-              "note",
-              "Phụ đề được tạo từ file video gốc đang mở, chưa tính các đoạn đã cắt/tăng tốc trong editor. Hãy lưu video đã chỉnh sửa trước nếu muốn phụ đề khớp bản đã cắt.",
-            )}
-          </div>
         </div>
       </div>
     </div>
@@ -591,6 +668,16 @@ const errBox: React.CSSProperties = {
   fontSize: 12.5,
   lineHeight: 1.5,
   whiteSpace: "pre-wrap",
+};
+
+const optionsStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 6 };
+const checkLabel: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 12.5,
+  color: "#d4d4dc",
+  cursor: "pointer",
 };
 
 const listStyle: React.CSSProperties = {

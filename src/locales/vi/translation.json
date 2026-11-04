@@ -716,6 +716,13 @@
     "stageAudio": "Đang tách âm thanh…",
     "stageTranscribe": "Đang nhận diện giọng nói…",
     "stageExport": "Đang xuất video…",
-    "note": "Phụ đề được tạo từ file video gốc đang mở, chưa tính các đoạn đã cắt/tăng tốc trong editor. Hãy lưu video đã chỉnh sửa trước nếu muốn phụ đề khớp bản đã cắt."
+    "note": "Phụ đề được tạo từ file video đang mở. Khi bạn cắt hoặc đổi tốc độ, mốc phụ đề sẽ tự khớp lúc xuất.",
+    "previewOnPlayer": "Hiện phụ đề ngay trên trình phát",
+    "matchEdits": "File .srt khớp với video đã chỉnh sửa (cắt/tốc độ)",
+    "noneKept": "Không còn phụ đề nào nằm trong phần video được giữ lại.",
+    "needHistory": "Video này không nằm trong Thư viện nên chưa xuất kèm chỉnh sửa được — hãy lưu video đã chỉnh sửa trước.",
+    "savedEditedVideo": "Đã xuất video đã chỉnh sửa kèm phụ đề",
+    "stageEdit": "Đang áp dụng chỉnh sửa vào video…",
+    "editedExportHint": "Video có chỉnh sửa: xuất video sẽ áp dụng các chỉnh sửa hiện tại (cắt, tốc độ, phóng to, crop, chú thích) rồi ghi phụ đề lên bản đó; mốc phụ đề tự khớp."
   }
 }
