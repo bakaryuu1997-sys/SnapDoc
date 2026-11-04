@@ -479,3 +479,236 @@ export function calculateCameraTransform(
     scale,
   };
 }
+
+
+// ============================================================================
+// SCREEN STUDIO CINEMATIC ENGINE: BEZIER SMOOTH CURSOR & DYNAMIC CLICK-ZOOM
+// ============================================================================
+
+export interface ClickRipple {
+  id: string;
+  x: number; // 0..1 relative to video
+  y: number; // 0..1 relative to video
+  pixelX: number;
+  pixelY: number;
+  progress: number; // 0.0 -> 1.0
+  button: "left" | "right" | "middle";
+  radiusPx: number;
+  opacity: number;
+}
+
+export interface SmoothCursorState {
+  x: number; // 0..1
+  y: number; // 0..1
+  pixelX: number;
+  pixelY: number;
+  visible: boolean;
+  isClicking: boolean;
+  clickScale: number; // 1.0 -> 0.88
+  button: "left" | "right" | "middle";
+  ripples: ClickRipple[];
+}
+
+/**
+ * Nội suy Hermite Spline 1D với vận tốc tiếp tuyến đầu/cuối.
+ * Đảm bảo liên tục đạo hàm bậc 1 (C1 continuity), không bao giờ có góc gãy nhọn.
+ */
+export function interpolateHermite(
+  p1: number,
+  p2: number,
+  v1: number,
+  v2: number,
+  dt: number,
+  u: number,
+): number {
+  const t = clamp(u, 0, 1);
+  const t2 = t * t;
+  const t3 = t2 * t;
+
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
+
+  return h00 * p1 + h10 * (dt * v1) + h01 * p2 + h11 * (dt * v2);
+}
+
+/**
+ * Tìm kiếm nhị phân (Binary Search O(log N)) chỉ số phần tử có event.t <= targetMs.
+ */
+export function findEventIndexAtTime(events: MouseTelemetryItem[], targetMs: number): number {
+  if (events.length === 0) return -1;
+  if (targetMs < events[0].t) return 0;
+  if (targetMs >= events[events.length - 1].t) return events.length - 1;
+
+  let low = 0;
+  let high = events.length - 1;
+  let result = 0;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (events[mid].t <= targetMs) {
+      result = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Tính toán toạ độ và trạng thái con trỏ chuột mượt mà (Cinematic Bezier / Hermite Spline)
+ * cùng hiệu ứng sóng nước click (Ripple Waves) tại thời điểm playheadMs.
+ */
+export function getSmoothCursorState(
+  telemetry: MouseTelemetryFile | null | undefined,
+  playheadMs: number,
+  segments?: Segment[],
+  options?: {
+    deadbandPx?: number; // Ngưỡng khử rung tay (mặc định 2.5px)
+    rippleDurationMs?: number; // Thời gian vòng sóng nước mở rộng (mặc định 420ms)
+    maxClickScaleDown?: number; // Độ co của con trỏ khi click (mặc định 0.88)
+  },
+): SmoothCursorState {
+  const deadbandPx = options?.deadbandPx ?? 2.5;
+  const rippleDurationMs = options?.rippleDurationMs ?? 420;
+  const maxClickScaleDown = options?.maxClickScaleDown ?? 0.88;
+
+  const defaultState: SmoothCursorState = {
+    x: 0.5,
+    y: 0.5,
+    pixelX: 960,
+    pixelY: 540,
+    visible: false,
+    isClicking: false,
+    clickScale: 1.0,
+    button: "left",
+    ripples: [],
+  };
+
+  if (!telemetry || !telemetry.events || telemetry.events.length === 0) {
+    return defaultState;
+  }
+
+  const vw = telemetry.videoWidth > 0 ? telemetry.videoWidth : 1920;
+  const vh = telemetry.videoHeight > 0 ? telemetry.videoHeight : 1080;
+
+  // Chuẩn hoá timeline events nếu có phân đoạn trim/tốc độ
+  const timelineEvents: MouseTelemetryItem[] = [];
+  for (const ev of telemetry.events) {
+    const t = telemetryMsToTimeline(segments, ev.t);
+    if (t !== null && t >= 0) {
+      timelineEvents.push(t === ev.t ? ev : { ...ev, t });
+    }
+  }
+  timelineEvents.sort((a, b) => a.t - b.t);
+
+  if (timelineEvents.length === 0) {
+    return defaultState;
+  }
+
+  const firstT = timelineEvents[0].t;
+  const lastT = timelineEvents[timelineEvents.length - 1].t;
+
+  // Nếu playhead nằm ngoài dải sự kiện > 1.5s thì ẩn con trỏ
+  if (playheadMs < firstT - 1500 || playheadMs > lastT + 1500) {
+    return { ...defaultState, visible: false };
+  }
+
+  // 1. Quét tìm các hiệu ứng sóng nước (Ripple Click Waves) gần playhead
+  const ripples: ClickRipple[] = [];
+  let isCurrentlyClicking = false;
+  let activeClickButton: "left" | "right" | "middle" = "left";
+
+  for (const ev of timelineEvents) {
+    if (ev.type === "click") {
+      const dt = playheadMs - ev.t;
+      if (dt >= 0 && dt <= rippleDurationMs) {
+        const p = dt / rippleDurationMs;
+        const easedP = smootherstep(p);
+        const radius = 8 + 36 * easedP;
+        const opacity = Math.max(0, 0.85 * (1 - p));
+
+        ripples.push({
+          id: `rip_${ev.t}_${ev.x}_${ev.y}`,
+          x: clamp(ev.x / vw, 0, 1),
+          y: clamp(ev.y / vh, 0, 1),
+          pixelX: ev.x,
+          pixelY: ev.y,
+          progress: p,
+          button: ev.button || "left",
+          radiusPx: radius,
+          opacity,
+        });
+
+        if (dt <= 140) {
+          isCurrentlyClicking = true;
+          activeClickButton = ev.button || "left";
+        }
+      }
+    }
+  }
+
+  // 2. Định vị vị trí con trỏ chuột bằng Hermite / Catmull-Rom Spline
+  const idx = findEventIndexAtTime(timelineEvents, playheadMs);
+  const p1 = timelineEvents[idx];
+  const p2 = idx < timelineEvents.length - 1 ? timelineEvents[idx + 1] : p1;
+
+  let currentX = p1.x;
+  let currentY = p1.y;
+
+  if (p1 !== p2 && p2.t > p1.t) {
+    const p0 = idx > 0 ? timelineEvents[idx - 1] : p1;
+    const p3 = idx + 2 < timelineEvents.length ? timelineEvents[idx + 2] : p2;
+
+    const dt = (p2.t - p1.t) / 1000; // Đổi sang giây
+    let u = (playheadMs - p1.t) / (p2.t - p1.t);
+
+    // Nếu điểm đích p2 là cú click -> áp dụng easing giảm tốc mượt mà (ease-out deceleration)
+    if (p2.type === "click") {
+      u = Math.sin((u * Math.PI) / 2);
+    }
+
+    // Tính vận tốc tại p1 và p2 theo Catmull-Rom tiếp tuyến
+    const dt02 = Math.max(0.001, (p2.t - p0.t) / 1000);
+    const dt13 = Math.max(0.001, (p3.t - p1.t) / 1000);
+
+    const vx1 = (p2.x - p0.x) / dt02;
+    const vy1 = (p2.y - p0.y) / dt02;
+    const vx2 = (p3.x - p1.x) / dt13;
+    const vy2 = (p3.y - p1.y) / dt13;
+
+    // Khoảng cách dịch chuyển thực tế
+    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+
+    if (dist < deadbandPx && p2.type !== "click") {
+      // Khử rung tay: nếu khoảng di chuyển < deadbandPx thì giữ nguyên p1
+      currentX = p1.x;
+      currentY = p1.y;
+    } else {
+      currentX = interpolateHermite(p1.x, p2.x, vx1, vx2, dt, u);
+      currentY = interpolateHermite(p1.y, p2.y, vy1, vy2, dt, u);
+    }
+  }
+
+  // Giới hạn trong kích thước video
+  const clampedPxX = clamp(currentX, 0, vw);
+  const clampedPxY = clamp(currentY, 0, vh);
+
+  // Hiệu ứng co nhẹ con trỏ khi click (1.0 -> maxClickScaleDown)
+  const clickScale = isCurrentlyClicking ? maxClickScaleDown : 1.0;
+
+  return {
+    x: clamp(clampedPxX / vw, 0, 1),
+    y: clamp(clampedPxY / vh, 0, 1),
+    pixelX: clampedPxX,
+    pixelY: clampedPxY,
+    visible: true,
+    isClicking: isCurrentlyClicking,
+    clickScale,
+    button: activeClickButton,
+    ripples,
+  };
+}

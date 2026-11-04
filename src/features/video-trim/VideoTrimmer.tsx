@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ipc, type KeepRange } from "../../lib/ipc";
 import GifExportModal from "./GifExportModal";
+import CaptionsModal from "./CaptionsModal";
 import {
   type Segment,
   MIN_SEG_MS,
@@ -41,6 +42,7 @@ import VideoCropOverlay from "./VideoCropOverlay";
 import OverlayTimelineTrack from "./OverlayTimelineTrack";
 import ZoomTimelineTrack from "./ZoomTimelineTrack";
 import SpeedTimelineTrack from "./SpeedTimelineTrack";
+import { SmoothCursorOverlay } from "./SmoothCursorOverlay";
 import {
   generateAutoZoomSegments,
   interpolateCamera,
@@ -398,6 +400,9 @@ export default function VideoTrimmer({
   const [wrapSize, setWrapSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [mouseTelemetry, setMouseTelemetry] = useState<MouseTelemetryFile | null>(null);
   const [isDraggingFocusPin, setIsDraggingFocusPin] = useState(false);
+  const [smoothCursorEnabled, setSmoothCursorEnabled] = useState(true);
+  const [cursorStyle, setCursorStyle] = useState<"mac" | "windows" | "dot">("mac");
+  const [showCursorRipples, setShowCursorRipples] = useState(true);
 
   const selectedZoom = useMemo(
     () => zoomSegments.find((z) => z.id === selectedZoomId) ?? null,
@@ -570,6 +575,7 @@ export default function VideoTrimmer({
   };
   const [overlayTool, setOverlayTool] = useState<VideoOverlayTool>("select");
   const [gifModalOpen, setGifModalOpen] = useState(false);
+  const [captionsOpen, setCaptionsOpen] = useState(false);
   const selectedSegment = useMemo(
     () => segments.find((s) => s.id === selectedSegmentId) ?? null,
     [segments, selectedSegmentId],
@@ -2192,6 +2198,18 @@ export default function VideoTrimmer({
             />
 
             {!isCropMode && (
+              <SmoothCursorOverlay
+                telemetry={mouseTelemetry}
+                playheadMs={playheadMs}
+                videoRef={videoRef}
+                segments={effectiveSegments}
+                enabled={smoothCursorEnabled}
+                cursorStyle={cursorStyle}
+                showRipples={showCursorRipples}
+              />
+            )}
+
+            {!isCropMode && (
               <VideoCanvasOverlay
                 videoRef={videoRef}
                 playheadMs={playheadMs}
@@ -2610,6 +2628,13 @@ export default function VideoTrimmer({
         <button style={iconToolBtn} onClick={() => setGifModalOpen(true)} title={t("videoTrimmer.exportGif")}>
           <GifIcon />
         </button>
+        <button
+          style={iconToolBtn}
+          onClick={() => setCaptionsOpen(true)}
+          title={t("captions.openTooltip", "Phụ đề tự động (AI)")}
+        >
+          <CaptionsIcon />
+        </button>
         <div style={toolDivider} />
 
         {/* Vẽ khung, Che mờ, Chèn chữ & Mũi tên */}
@@ -2674,6 +2699,46 @@ export default function VideoTrimmer({
         >
           <PlusZoomIcon />
         </button>
+
+        {/* Chuột điện ảnh Screen Studio (Bezier Smooth Cursor & Dynamic Click-Zoom) */}
+        {mouseTelemetry && mouseTelemetry.events && mouseTelemetry.events.length > 0 && (
+          <>
+            <button
+              style={{
+                ...iconToolBtn,
+                ...(smoothCursorEnabled ? iconToolBtnActive : null),
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "0 8px",
+                width: "auto",
+              }}
+              onClick={() => setSmoothCursorEnabled((v) => !v)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setCursorStyle((prev) => (prev === "mac" ? "windows" : prev === "windows" ? "dot" : "mac"));
+              }}
+              title={
+                smoothCursorEnabled
+                  ? `${t("videoTrimmer.smoothCursorOff")} (Click phải: kiểu dáng ${cursorStyle.toUpperCase()})`
+                  : t("videoTrimmer.smoothCursorOn")
+              }
+            >
+              <SmoothCursorIcon />
+              <span style={{ fontSize: 12, fontWeight: 500 }}>{t("videoTrimmer.smoothCursorLabel")}</span>
+            </button>
+            <button
+              style={{
+                ...iconToolBtn,
+                ...(showCursorRipples ? iconToolBtnActive : null),
+              }}
+              onClick={() => setShowCursorRipples((v) => !v)}
+              title={showCursorRipples ? t("videoTrimmer.rippleOff") : t("videoTrimmer.rippleOn")}
+            >
+              <RippleWaveIcon />
+            </button>
+          </>
+        )}
         <div style={toolDivider} />
 
         {/* Tách nhạc nền: xoá HẲN track âm thanh khỏi file khi Áp dụng cắt —
@@ -2970,6 +3035,18 @@ export default function VideoTrimmer({
         sourceHistoryId={sourceHistoryId}
         onFlash={onFlash}
       />
+
+      <CaptionsModal
+        open={captionsOpen}
+        onClose={() => setCaptionsOpen(false)}
+        filePath={filePath}
+        durationMs={durationMs}
+        onSeekSource={(srcMs) => {
+          const tl = sourceMsToTimeline(effectiveSegments, srcMs);
+          if (tl != null) seekTo(tl);
+        }}
+        onFlash={onFlash}
+      />
     </div>
   );
 }
@@ -3072,6 +3149,18 @@ function CameraIcon() {
     <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" />
       <circle cx="12" cy="13.5" r="3.2" />
+    </svg>
+  );
+}
+
+function CaptionsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="3" />
+      <path d="M6 10.5h5" />
+      <path d="M13.5 10.5H18" />
+      <path d="M6 14.5h2.5" />
+      <path d="M11 14.5h7" />
     </svg>
   );
 }
@@ -3701,6 +3790,25 @@ function PlusZoomIcon() {
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
       <line x1="11" y1="8" x2="11" y2="14" />
       <line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  );
+}
+
+function SmoothCursorIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 3l7 18 3.5-7.5L22 10z" fill="currentColor" fillOpacity={0.25} />
+      <path d="M14.5 13.5l4.5 4.5" />
+    </svg>
+  );
+}
+
+function RippleWaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" fill="currentColor" />
+      <circle cx="12" cy="12" r="7" strokeDasharray="3 3" />
+      <circle cx="12" cy="12" r="10" strokeOpacity={0.5} />
     </svg>
   );
 }

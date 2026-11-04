@@ -55,7 +55,17 @@
     "languageSection": "NGÔN NGỮ",
     "languageLabel": "Ngôn ngữ hiển thị",
     "requestPermission": "Cấp quyền",
-    "requestPermissionHint": "Nếu không thấy hộp thoại, hãy bật SnapDoc trong Cài đặt hệ thống › Quyền riêng tư & Bảo mật › Ghi màn hình, rồi khởi động lại SnapDoc."
+    "requestPermissionHint": "Nếu không thấy hộp thoại, hãy bật SnapDoc trong Cài đặt hệ thống › Quyền riêng tư & Bảo mật › Ghi màn hình, rồi khởi động lại SnapDoc.",
+    "tabGeneral": "Chung",
+    "tabShortcuts": "Phím tắt",
+    "tabRecording": "Quay video",
+    "tabPermissions": "Quyền hạn",
+    "editorShortcuts": "PHÍM TẮT TRONG EDITOR",
+    "shortcutCodeBlock": "Thêm khung code cú pháp",
+    "shortcutCrop": "Cắt xén khung hình",
+    "shortcutLiveText": "Bật/Tắt Live Text OCR",
+    "shortcutInstantGrab": "Trích xuất chữ siêu tốc vào Clipboard",
+    "shortcutEscape": "Thoát công cụ / Hủy thao tác"
   },
   "updates": {
     "checkingUpdates": "Đang kiểm tra…",
@@ -177,7 +187,10 @@
     "quickCaptureHint": "Chụp nhanh — chọn vùng rồi chú thích ngay tại chỗ",
     "options": "Tuỳ chọn",
     "close": "Đóng",
-    "quick": "Chụp nhanh"
+    "quick": "Chụp nhanh",
+    "recordFull": "Quay toàn màn",
+    "recordWindow": "Quay cửa sổ",
+    "recordRegion": "Quay vùng"
   },
   "overlay": {
     "dragToSelect": "Kéo để chọn vùng • Di chuột qua cửa sổ rồi click để chụp cả cửa sổ • Esc / chuột phải để huỷ",
@@ -281,7 +294,19 @@
     "rangeToday": "Hôm nay",
     "rangeLast7": "7 ngày qua",
     "rangeLast30": "30 ngày qua",
-    "rangeCustom": "Tùy chọn"
+    "rangeCustom": "Tùy chọn",
+    "emptyTitle": "Thư viện của bạn đang sẵn sàng",
+    "emptyDesc": "Chụp ảnh màn hình để lưu lại và chỉnh sửa bất cứ lúc nào.",
+    "captureNowBtn": "Chụp vùng chọn ngay",
+    "trashEmptyTitle": "Thùng rác trống",
+    "trashEmptyDesc": "Các ảnh và video bạn đã xóa sẽ xuất hiện ở đây trước khi bị dọn dẹp vĩnh viễn.",
+    "filterEmptyTitle": "Không tìm thấy kết quả",
+    "filterEmptyDesc": "Không có ảnh hoặc video nào khớp với bộ lọc đã chọn.",
+    "clearFilterBtn": "Xóa bộ lọc",
+    "deletedToast": "Đã chuyển {{count}} ảnh vào Thùng rác",
+    "undo": "Hoàn tác",
+    "pin": "Ghim",
+    "pinTooltip": "Ghim ảnh nổi trên các cửa sổ khác"
   },
   "thumbnail": {
     "openEditorTooltip": "Nhấn để mở editor",
@@ -289,7 +314,8 @@
     "editTitle": "Sửa",
     "copyTitle": "Copy",
     "saveTitle": "Lưu",
-    "closeTitle": "Đóng"
+    "closeTitle": "Đóng",
+    "pinTitle": "Ghim lên màn hình"
   },
   "tray": {
     "quickCapture": "Chụp nhanh",
@@ -389,7 +415,9 @@
     "copyBtn": "Copy",
     "blurModeShort": "Blur",
     "pixelModeShort": "Pixel",
-    "solidModeShort": "Solid"
+    "solidModeShort": "Solid",
+    "beautify": "Làm đẹp",
+    "beautifyHint": "Tự động bo góc, đổ bóng 3D và phủ nền gradient (1-Click Beautifier)"
   },
   "editorMain": {
     "copiedClipboard": "Đã copy vào clipboard",
@@ -574,7 +602,12 @@
     "autoZoomOn": "Tự động Zoom Focus theo thao tác chuột",
     "autoZoomOff": "Tắt Zoom Focus chuột",
     "autoZoomLabel": "Focus",
-    "addZoomAtPlayhead": "Thêm vùng Zoom Focus tại thời điểm hiện tại"
+    "addZoomAtPlayhead": "Thêm vùng Zoom Focus tại thời điểm hiện tại",
+    "smoothCursorLabel": "Chuột điện ảnh",
+    "smoothCursorOn": "Bật chuột điện ảnh Screen Studio (Bezier Smoothing)",
+    "smoothCursorOff": "Tắt chuột điện ảnh Screen Studio",
+    "rippleOn": "Bật sóng nước Click Ripple",
+    "rippleOff": "Tắt sóng nước Click Ripple"
   },
   "gifExport": {
     "title": "Xuất ảnh GIF",
@@ -646,5 +679,43 @@
     "apply": "Áp dụng crop",
     "copy": "Sao chép",
     "cancel": "Huỷ"
+  },
+  "captions": {
+    "openTooltip": "Phụ đề tự động (AI)",
+    "title": "Phụ đề tự động (AI)",
+    "subtitle": "Whisper.cpp chạy offline ngay trên máy bạn — video không rời khỏi máy.",
+    "close": "Đóng",
+    "unsupported": "Phụ đề AI hiện chỉ hỗ trợ Windows.",
+    "setupTitle": "Cài đặt lần đầu",
+    "setupDesc": "Cần tải engine Whisper ({{engine}}) và 1 model nhận diện giọng nói. Tệp tải từ github.com/ggml-org/whisper.cpp và huggingface.co/ggerganov/whisper.cpp, được kiểm tra SHA-256 trước khi dùng.",
+    "modelBase": "Nhanh",
+    "modelSmall": "Cân bằng (khuyên dùng)",
+    "modelTurbo": "Chính xác nhất",
+    "installed": "đã cài",
+    "install": "Tải về & cài đặt",
+    "installing": "Đang tải…",
+    "language": "Ngôn ngữ trong video",
+    "langAuto": "Tự nhận diện",
+    "model": "Model",
+    "working": "Đang xử lý…",
+    "cancel": "Huỷ",
+    "generate": "Tạo phụ đề",
+    "regenerate": "Tạo lại phụ đề",
+    "empty": "Chưa có phụ đề. Bấm “Tạo phụ đề” để bắt đầu.",
+    "seek": "Nhảy tới đoạn này",
+    "remove": "Xoá dòng này",
+    "copyText": "Copy nội dung",
+    "saveSrt": "Lưu .srt",
+    "exportSoft": "Xuất video (phụ đề bật/tắt được)",
+    "exportBurn": "Xuất video (ghi cứng vào hình)",
+    "copied": "Đã copy nội dung phụ đề",
+    "savedSrt": "Đã lưu file phụ đề (.srt)",
+    "savedVideo": "Đã xuất video có phụ đề",
+    "stageEngine": "Đang tải engine Whisper…",
+    "stageModel": "Đang tải model…",
+    "stageAudio": "Đang tách âm thanh…",
+    "stageTranscribe": "Đang nhận diện giọng nói…",
+    "stageExport": "Đang xuất video…",
+    "note": "Phụ đề được tạo từ file video gốc đang mở, chưa tính các đoạn đã cắt/tăng tốc trong editor. Hãy lưu video đã chỉnh sửa trước nếu muốn phụ đề khớp bản đã cắt."
   }
 }

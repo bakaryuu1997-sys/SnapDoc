@@ -113,7 +113,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             "settings" => {
                 let app = app.clone();
                 std::thread::spawn(move || {
-                    let _ = windows::open_settings(&app);
+                    let _ = windows::open_settings(&app, None);
                 });
             }
             "history" => {

@@ -13,7 +13,7 @@ use std::sync::{
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_plugin_updater::Update;
 
 /// Caches the most recently fetched update so `install_pending` can install it
 /// without re-checking. The plugin's `Update` is not `Serialize`, so it can't be
@@ -127,16 +127,13 @@ pub async fn silent_download_and_install(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-async fn fetch(app: &AppHandle) -> tauri_plugin_updater::Result<Option<Update>> {
-    // Windows: installer thoát app bằng `std::process::exit(0)` — không qua
-    // `ExitRequested`/`Exit` của Tauri. Hook này là cơ hội cuối để chốt bản
-    // quay đang chạy/đang lưu dở (no-op nếu không quay).
-    let handle = app.clone();
-    app.updater_builder()
-        .on_before_exit(move || crate::record::finalize_on_exit(&handle))
-        .build()?
-        .check()
-        .await
+/// Bản build cá nhân (fork): TẮT hoàn toàn cập nhật từ máy chủ của tác giả gốc
+/// (`github.com/dev-truonglx/snapdoc`). Trước đây app tự động tải + cài bản
+/// release của tác giả ngay sau khi khởi động, ghi đè bản tự build về phiên bản
+/// cũ. Luôn trả "không có bản cập nhật" nên cả luồng tự động lẫn nút "Kiểm tra
+/// cập nhật" thủ công đều không còn tải gì về.
+async fn fetch(_app: &AppHandle) -> tauri_plugin_updater::Result<Option<Update>> {
+    Ok(None)
 }
 
 /// Summary of the currently cached pending update, if any. Lets the update

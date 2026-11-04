@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { useHistory } from "./useHistoryStore";
 import HistoryItemCard from "./HistoryItemCard";
+import HistoryEmptyState from "./HistoryEmptyState";
 
 const CARD_MIN_WIDTH = 160;
 const CARD_GAP = 14;
@@ -60,7 +61,7 @@ export default function HistoryGrid({ onOpenEditor }: Props) {
   return (
     <div ref={parentRef} style={scrollArea}>
       {items.length === 0 && !loading ? (
-        <div style={emptyState}>{t("historyView.noCaptures")}</div>
+        <HistoryEmptyState />
       ) : (
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((vRow) => {
@@ -110,14 +111,6 @@ const scrollArea: React.CSSProperties = {
   padding: "10px 0",
 };
 
-const emptyState: React.CSSProperties = {
-  flex: 1,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "var(--text-dim)",
-  fontSize: 13,
-};
 
 const loadingRow: React.CSSProperties = {
   textAlign: "center",

@@ -528,7 +528,7 @@ fn window_placement_size(
 /// Đặt cửa sổ ở giữa-đáy màn hình đang chứa con trỏ chuột (cho capture bar).
 fn place_bottom_center(app: &AppHandle, win: &tauri::WebviewWindow) {
     if let Some(m) = cursor_or_primary_monitor_bounds(app) {
-        let (win_w, win_h) = window_placement_size(win, m.scale, (730.0, 80.0));
+        let (win_w, win_h) = window_placement_size(win, m.scale, (980.0, 80.0));
         let x = m.x + (m.w - win_w) / 2.0;
         #[cfg(target_os = "macos")]
         {
@@ -654,7 +654,7 @@ pub fn open_capture_bar(app: &AppHandle) -> Result<(), String> {
         // preview. Cửa sổ resizable(false) + body overflow:hidden nên rộng
         // hơn nội dung thật 1 chút để không bao giờ bị cắt, kể cả khi font
         // render rộng hơn 1 chút trên Windows.
-        .inner_size(730.0, 80.0)
+        .inner_size(980.0, 80.0)
         .resizable(false)
         .decorations(false)
         .transparent(true)
@@ -778,7 +778,7 @@ pub fn prewarm_capture_bar(app: &AppHandle) -> Result<(), String> {
     }
     let win = WebviewWindowBuilder::new(app, "capture-bar", url("capture-bar"))
         .title("SnapDoc")
-        .inner_size(730.0, 80.0)
+        .inner_size(980.0, 80.0)
         .resizable(false)
         .decorations(false)
         .transparent(true)
@@ -2979,8 +2979,14 @@ fn force_to_foreground(win: &tauri::WebviewWindow) {
         AllowSetForegroundWindow(0xFFFFFFFF);
     }
 
-    let _ = win.set_always_on_top(true);
-    let _ = win.set_always_on_top(false);
+    let label = win.label();
+    let is_pinned = label.starts_with("pin-");
+    if !is_pinned {
+        let _ = win.set_always_on_top(true);
+        let _ = win.set_always_on_top(false);
+    } else {
+        let _ = win.set_always_on_top(true);
+    }
 
     if let Ok(raw_hwnd) = win.hwnd() {
         let target_hwnd = raw_hwnd.0 as HWND;
@@ -3555,19 +3561,27 @@ pub fn prewarm_thumbnail(app: &AppHandle) -> Result<(), String> {
 }
 
 /// Settings.
-pub fn open_settings(app: &AppHandle) -> Result<(), String> {
+pub fn open_settings(app: &AppHandle, tab: Option<String>) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("settings") {
         let _ = win.show();
         let _ = win.unminimize();
         place_center_on_monitor(app, &win);
         bring_to_front(app, &win);
+        if let Some(t) = tab {
+            use tauri::Emitter;
+            let _ = win.emit("switch-settings-tab", t);
+        }
         return Ok(());
     }
-    let win = WebviewWindowBuilder::new(app, "settings", url("settings"))
+    let target_url = if let Some(ref t) = tab {
+        WebviewUrl::App(format!("index.html?win=settings&tab={t}").into())
+    } else {
+        url("settings")
+    };
+    let win = WebviewWindowBuilder::new(app, "settings", target_url)
         .title("SnapDoc — Cài đặt")
-        .inner_size(560.0, 700.0)
-        .min_inner_size(560.0, 400.0)
-        .max_inner_size(560.0, 10000.0)  // khóa chiều ngang = 560, chỉ resize dọc
+        .inner_size(580.0, 720.0)
+        .min_inner_size(520.0, 400.0)
         .resizable(true)
         .center()
         .skip_taskbar(false)  // Windows: hiển thị icon trên taskbar
@@ -3575,5 +3589,118 @@ pub fn open_settings(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Không tạo được settings: {e}"))?;
     place_center_on_monitor(app, &win);
     bring_to_front(app, &win);
+    Ok(())
+}
+
+/// Mở (hoặc hiện lại) cửa sổ "Webcam Bubble" — camera tròn nổi trên màn hình,
+/// Always-On-Top, kéo-thả tự do, dùng khi quay màn hình để video có hình mặt
+/// người quay (kiểu Loom/CleanShot X). CỐ Ý KHÔNG set `content_protected`:
+/// pipeline quay màn hình hiện tại (WGC trên Windows/SCK trên macOS) chụp
+/// nguyên trạng desktop, nên cửa sổ này tự động "lọt" vào video như mọi cửa
+/// sổ bình thường khác — không cần sửa gì trong `record/encoder.rs`.
+pub fn open_webcam_bubble(app: &AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("webcam-bubble") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+
+    let size = 220.0;
+    let win = WebviewWindowBuilder::new(app, "webcam-bubble", url("webcam-bubble"))
+        .title("SnapDoc — Webcam")
+        .inner_size(size, size)
+        .min_inner_size(120.0, 120.0)
+        .max_inner_size(480.0, 480.0)
+        .resizable(true)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(true)
+        .build()
+        .map_err(|e| format!("Không tạo được cửa sổ Webcam Bubble: {e}"))?;
+
+    // Mặc định đặt ở góc dưới-phải màn hình đang chứa con trỏ chuột.
+    if let Some(m) = cursor_or_primary_monitor_bounds(app) {
+        let margin = 24.0;
+        let x = m.x + m.w - size - margin;
+        let y = m.y + m.h - size - margin;
+        #[cfg(target_os = "macos")]
+        {
+            let _ = win.set_position(tauri::LogicalPosition::new(x, y));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = win.set_position(tauri::PhysicalPosition::new(x.round() as i32, y.round() as i32));
+        }
+    }
+
+    let _ = win.set_focus();
+    Ok(())
+}
+
+/// Mở cửa sổ ghim ảnh chụp nổi (Always-On-Top, không viền, trong suốt, hỗ trợ kéo thả).
+pub fn open_pinned_window(
+    app: &AppHandle,
+    image_src: String,
+    width: Option<f64>,
+    height: Option<f64>,
+) -> Result<(), String> {
+    let n = app
+        .state::<AppState>()
+        .pin_seq
+        .fetch_add(1, Ordering::SeqCst)
+        + 1;
+    let label = format!("pin-{n}");
+
+    if let Ok(mut map) = app.state::<AppState>().pinned_images.lock() {
+        map.insert(label.clone(), image_src);
+    }
+
+    let target_url = format!("index.html?win=pin&label={label}");
+
+    // Kích thước ban đầu phù hợp với tỉ lệ ảnh
+    let w = width.unwrap_or(480.0).clamp(200.0, 1400.0);
+    let h = height.unwrap_or(360.0).clamp(150.0, 1000.0);
+
+    let win = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(target_url.into()))
+        .title("SnapDoc — Pin")
+        .inner_size(w, h)
+        .min_inner_size(140.0, 100.0)
+        .resizable(true)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(false)
+        .shadow(true)
+        .build()
+        .map_err(|e| format!("Không tạo được cửa sổ Pin: {e}"))?;
+
+    place_center_on_monitor(app, &win);
+    bring_to_front(app, &win);
+
+    // Đảm bảo tuyệt đối 100% cửa sổ Ghim ảnh luôn ở tầng cao nhất của OS (HWND_TOPMOST), đè lên mọi ứng dụng khác
+    let _ = win.set_always_on_top(true);
+    #[cfg(target_os = "windows")]
+    if let Ok(raw_hwnd) = win.hwnd() {
+        use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+        };
+        let target_hwnd = raw_hwnd.0 as HWND;
+        unsafe {
+            SetWindowPos(
+                target_hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            );
+        }
+    }
+
     Ok(())
 }

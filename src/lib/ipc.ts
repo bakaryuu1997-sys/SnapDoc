@@ -1,4 +1,31 @@
+export interface OcrWord {
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface OcrLine {
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  words: OcrWord[];
+  columnId?: number;
+}
+
+export interface OcrResult {
+  text: string;
+  words: OcrWord[];
+  lines?: OcrLine[];
+  engine?: "viesvtr" | "tesseract" | "windows";
+  engineError?: string;
+}
+
 import { invoke } from "@tauri-apps/api/core";
+import { writeText as tauriWriteText } from "@tauri-apps/plugin-clipboard-manager";
 import { type VideoOverlayItem, type VideoCrop, type ZoomSegment, sanitizeCrop } from "../features/video-trim/types";
 export type { VideoCrop, ZoomSegment };
 
@@ -206,6 +233,12 @@ export interface Settings {
    * xuống settings.json để tray menu (native, Rust-side) đọc được, xem
    * `Settings.tsx` language switcher + `tray::current_lang`. */
   language?: string;
+  /** OAuth Client ID/Secret ("Desktop app") của Google Cloud Console — dùng
+   * cho Cloud Share qua Google Drive. Lưu tại máy người dùng, KHÔNG gửi đi
+   * đâu khác ngoài trực tiếp tới Google (`drive_connect`/`drive_upload`, xem
+   * `drive.rs`). */
+  driveClientId?: string;
+  driveClientSecret?: string;
 }
 
 /** Kết quả mở file từ dialog. Không chỉ là data URL vì `.snapdoc` mang thêm lớp
@@ -225,6 +258,33 @@ export interface UpdateInfo {
   available: boolean;
   version: string;
   currentVersion: string;
+}
+
+/** Auto Caption (Whisper.cpp cục bộ) — xem `captions.rs`. Thời gian theo mốc của VIDEO GỐC (ms). */
+export interface CaptionSegment {
+  startMs: number;
+  endMs: number;
+  text: string;
+}
+
+export interface CaptionModelStatus {
+  id: "base" | "small" | "turbo" | string;
+  sizeBytes: number;
+  installed: boolean;
+}
+
+export interface CaptionsStatus {
+  supported: boolean;
+  engineInstalled: boolean;
+  engineSizeBytes: number;
+  models: CaptionModelStatus[];
+}
+
+export interface CaptionsProgress {
+  stage: "engine" | "model" | "audio" | "transcribe" | "export";
+  percent: number;
+  doneBytes: number;
+  totalBytes: number;
 }
 
 export const ipc = {
@@ -315,7 +375,7 @@ export const ipc = {
   /** @deprecated Không còn dùng do popover đã tách thành cửa sổ riêng */
   resizeCaptureBar: (height: number) => invoke<void>("resize_capture_bar", { height }),
   openEditor: () => invoke<void>("open_editor"),
-  openSettings: () => invoke<void>("open_settings"),
+  openSettings: (tab?: string) => invoke<void>("open_settings", { tab }),
   closeSelf: () => invoke<void>("close_self"),
   /** Báo Rust cửa sổ editor này đang có / không còn thay đổi chưa lưu. Rust
    * dùng để đặt title cửa sổ VÀ để biết có phải hiện lại editor sau những
@@ -361,6 +421,8 @@ export const ipc = {
     invoke<ArrayBuffer>("scroll_set_options", { pinFooter, extendSidebar, previewW }),
   finalizeScrollStitch: (mx?: number, my?: number) =>
     invoke<void>("finalize_scroll_stitch", { mx, my }),
+  scrollSendWheel: (steps: number, targetX?: number, targetY?: number) =>
+    invoke<void>("scroll_send_wheel", { steps, targetX, targetY }),
   // History / Library
   listHistory: (filter: HistoryFilter) => invoke<HistoryPage>("list_history", { filter }),
   getHistoryItem: (id: string) => invoke<HistoryItem>("get_history_item", { id }),
@@ -373,6 +435,88 @@ export const ipc = {
   emptyTrash: () => invoke<number>("empty_trash"),
   renameHistoryItem: (id: string, title: string) => invoke<void>("rename_history_item", { id, title }),
   openHistoryItemInEditor: (id: string) => invoke<void>("open_history_item_in_editor", { id }),
+  runOcr: (imageData: string) => invoke<OcrResult>("run_ocr", { imageData }),
+  copyText: async (text: string): Promise<void> => {
+    // 1. Rust backend (arboard + native Windows Set-Clipboard) - trực tiếp cấp OS, không phụ thuộc focus
+    try {
+      await invoke<void>("copy_text", { text });
+      return;
+    } catch {}
+    // 2. Tauri clipboard manager plugin
+    try {
+      await tauriWriteText(text);
+      return;
+    } catch {}
+    // 3. Fallback textarea + document.execCommand('copy')
+    try {
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.setAttribute("readonly", "");
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      el.style.top = "-9999px";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      return;
+    } catch {}
+    // 4. Fallback navigator.clipboard (nếu document đang focused)
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      }
+    } catch {}
+  },
+  pinImage: (src: string, width?: number, height?: number) =>
+    invoke<void>("pin_image", { src, width, height }),
+  /** Webcam Bubble: cửa sổ camera tròn nổi, dùng khi quay màn hình. KHÔNG
+   * content-protected nên chính pipeline quay màn hình "nhìn thấy" nó như
+   * một phần desktop thật — xem `windows::open_webcam_bubble` (Rust). */
+  openWebcamBubble: () => invoke<void>("open_webcam_bubble"),
+  closeWebcamBubble: () => invoke<void>("close_webcam_bubble"),
+  isWebcamBubbleOpen: () => invoke<boolean>("is_webcam_bubble_open"),
+  /** Cloud Share (Google Drive). `driveConnect` mở trình duyệt hệ thống cho
+   * user đăng nhập — có thể mất tới ~3 phút (user thao tác), KHÔNG set
+   * timeout ngắn ở phía gọi. Xem `drive.rs`. */
+  driveConnect: (clientId: string, clientSecret: string) =>
+    invoke<void>("drive_connect", { clientId, clientSecret }),
+  driveIsConnected: () => invoke<boolean>("drive_is_connected"),
+  driveDisconnect: () => invoke<void>("drive_disconnect"),
+  driveUpload: (filePath: string, fileName: string) =>
+    invoke<{ link: string }>("drive_upload", { filePath, fileName }),
+  /** Chia sẻ 1 item History qua Drive — backend tự chọn đúng bytes (ảnh:
+   * preview đã ghép annotation; video: file .mp4 thật). */
+  driveUploadHistoryItem: (id: string) =>
+    invoke<{ link: string }>("drive_upload_history_item", { id }),
+  /** Auto Caption: trạng thái engine/model, cài đặt, nhận diện, xuất. */
+  captionsStatus: () => invoke<CaptionsStatus>("captions_status"),
+  captionsSetup: (modelId: string) => invoke<void>("captions_setup", { modelId }),
+  captionsCancel: () => invoke<void>("captions_cancel"),
+  captionsTranscribe: (videoPath: string, language: string, modelId: string) =>
+    invoke<{ language: string; segments: CaptionSegment[] }>("captions_transcribe", {
+      videoPath,
+      language,
+      modelId,
+    }),
+  captionsSaveSrt: (outputPath: string, segments: CaptionSegment[]) =>
+    invoke<string>("captions_save_srt", { outputPath, segments }),
+  captionsExportVideo: (
+    inputPath: string,
+    outputPath: string,
+    segments: CaptionSegment[],
+    mode: "soft" | "burn",
+    language: string,
+    durationMs: number,
+  ) =>
+    invoke<string>("captions_export_video", {
+      inputPath,
+      outputPath,
+      segments,
+      mode,
+      language,
+      durationMs,
+    }),
   /** Đọc raw bytes ảnh gốc (không base64) — dùng để đổi ảnh tại chỗ trong
    * Editor (xem `HistoryStrip.tsx`), tránh chi phí base64+JSON của
    * `openHistoryItemInEditor`. */

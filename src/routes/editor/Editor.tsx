@@ -1,3 +1,4 @@
+import CommandPalette from "../../components/CommandPalette";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -29,9 +30,11 @@ import {
   stampVideoName,
   dirnameOf,
 } from "../../features/output/useOutput";
-import { ipc, type Pending, type HistoryItem, type VideoCrop, type KeepRange } from "../../lib/ipc";
+import { ipc, type Pending, type HistoryItem, type VideoCrop, type KeepRange, type OcrResult, type OcrWord } from "../../lib/ipc";
 import { editorToolFromKey } from "../../lib/toolShortcuts";
 import StitchDialog from "../../features/annotation/compose/StitchDialog";
+import OcrInspectorModal from "./OcrInspectorModal";
+import { recognizeImage, preloadOcrModel, type OcrLanguageMode, OCR_LANG_PRESETS, saveOcrLang } from "../../lib/ocrService";
 import type { StitchResult } from "../../features/annotation/compose/stitch";
 import { base64ToBlob } from "../../lib/blobUtils";
 
@@ -80,13 +83,18 @@ export default function Editor() {
   const { t } = useTranslation();
   const stageRef = useRef<StageHandle>(null);
   const loadDoc = useEditor((s) => s.loadDoc);
+  const addAnnotation = useEditor((s) => s.addAnnotation);
   const docHistoryId = useEditor((s) => s.doc?.historyId);
+  const docImage = useEditor((s) => s.doc?.image);
   const docAnnotations = useEditor((s) => s.doc?.annotations);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showFlattenConfirm, setShowFlattenConfirm] = useState(false);
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const [stitchImage, setStitchImage] = useState<string | null>(null);
+  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [liveTextEnabled, setLiveTextEnabled] = useState(false);
   // Video đang xem/cắt trong Editor (song song với `doc` — ảnh — trong store
   // `useEditor`; chỉ 1 trong 2 được render tại 1 thời điểm, xem JSX bên dưới).
   const [videoDoc, setVideoDoc] = useState<VideoDoc | null>(null);
@@ -117,6 +125,20 @@ export default function Editor() {
       un.then((f) => f());
     };
   }, []);
+
+  useEffect(() => {
+    // Pre-warm OCR engine trong background để khi bấm OCR phản hồi tức thì
+    const timer = setTimeout(() => {
+      preloadOcrModel().catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    setOcrResult(null);
+    setShowOcrModal(false);
+    setLiveTextEnabled(false);
+  }, [docHistoryId]);
 
   const insertImageAnnotation = (
     dataUrl: string,
@@ -574,12 +596,183 @@ export default function Editor() {
   }, []);
 
   const doCopy = async () => {
+    // Nếu đang bật Live Text và đã có kết quả OCR, copy toàn bộ chữ thay vì copy ảnh
+    if (liveTextEnabled && ocrResult && ocrResult.text && ocrResult.text.trim().length > 0) {
+      await ipc.copyText(ocrResult.text.trim());
+      flash(`Đã sao chép ${ocrResult.words.length} từ vào Clipboard! 📑`);
+      return;
+    }
     const url = stageRef.current?.exportPng();
     if (!url) return;
     setBusy(true);
     try {
       await copyToClipboard(url);
       flash(t("editorMain.copiedClipboard"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doPin = async () => {
+    const url = stageRef.current?.exportPng();
+    if (!url) return;
+    setBusy(true);
+    try {
+      await ipc.pinImage(url);
+      flash("Đã ghim ảnh 📌");
+    } catch (e) {
+      flash(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doOcr = async () => {
+    // Nếu Live Text đang bật, bấm nút OCR trên toolbar là TẮT Live Text
+    if (liveTextEnabled) {
+      setLiveTextEnabled(false);
+      flash("Đã tắt chế độ Live Text");
+      return;
+    }
+
+    // Nếu đã có sẵn kết quả OCR của ảnh hiện tại, bật lại Live Text tức thì
+    if (ocrResult && ocrResult.words.length > 0) {
+      setLiveTextEnabled(true);
+      flash(`Đã bật chế độ Live Text (${ocrResult.words.length} từ) — Nhấn Esc hoặc nút trên để tắt! 📑`);
+      return;
+    }
+
+    const url = stageRef.current?.exportPng() || docImage;
+    if (!url) return;
+    setBusy(true);
+    try {
+      const res = await recognizeImage(url);
+      if (res && res.text && res.text.trim().length > 0) {
+        setOcrResult(res);
+        setLiveTextEnabled(true);
+        ipc.copyText(res.text).catch(() => {});
+        flash(`Đã sao chép ${res.words.length} từ vào Clipboard & Bật Live Text! 📑`);
+      } else {
+        flash("Không nhận diện được văn bản trong ảnh");
+      }
+    } catch (e: any) {
+      flash(String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReRecognize = async (mode: OcrLanguageMode) => {
+    saveOcrLang(mode);
+    const url = stageRef.current?.exportPng();
+    if (!url) return;
+    setBusy(true);
+    try {
+      const res = await recognizeImage(url, mode);
+      if (res && res.text && res.text.trim().length > 0) {
+        setOcrResult(res);
+        flash(`Đã nhận diện lại với chế độ ${OCR_LANG_PRESETS[mode]?.label || mode}! ✨`);
+      } else {
+        flash("Không nhận diện được văn bản với ngôn ngữ đã chọn");
+      }
+    } catch (e: any) {
+      flash(String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCopyLiveText = async (text: string) => {
+    try {
+      await ipc.copyText(text);
+      flash(`Đã sao chép vào Clipboard! 📑`);
+    } catch {
+      flash("Không thể sao chép văn bản vào Clipboard");
+    }
+  };
+
+  const handleRedactWords = (words: OcrWord[]) => {
+    for (const w of words) {
+      addAnnotation({
+        id: uid(),
+        type: "blur",
+        x: Math.max(0, w.x - 2),
+        y: Math.max(0, w.y - 2),
+        width: w.w + 4,
+        height: w.h + 4,
+        color: "#ef4444",
+        strokeWidth: 0,
+        blurMode: "pixelate",
+        blurRadius: 10,
+        solidColor: "#18181b",
+      });
+    }
+    flash(`Đã che mờ ${words.length} từ đã chọn! 🛡️`);
+  };
+
+  const doAutoRedact = async () => {
+    const url = stageRef.current?.exportPng();
+    if (!url) return;
+    setBusy(true);
+    try {
+      const res = await recognizeImage(url);
+      if (!res || !res.words || res.words.length === 0) {
+        flash("Không tìm thấy văn bản để phân tích bảo mật");
+        return;
+      }
+
+      const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      const API_KEY_REGEX = /^(?:sk-[a-zA-Z0-9_-]{16,}|gh[pousr]_[a-zA-Z0-9]{20,}|(?:AKIA|ASIA)[0-9A-Z]{16}|xox[baprs]-[0-9a-zA-Z-]{10,})$/i;
+      const JWT_REGEX = /^eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}$/;
+      const IPV4_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/;
+      const CREDIT_CARD_REGEX = /^(?:4[0-9]{3}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{1,4}|5[1-5][0-9]{2}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}|3[47][0-9]{2}[-\s]?[0-9]{6}[-\s]?[0-9]{5})$/;
+      const PHONE_VN_REGEX = /^(?:\+84|0)(?:3|5|7|8|9)\d{8}$/;
+      const PHONE_INTL_REGEX = /^\+[1-9]\d{1,2}[-.\s]?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}$/;
+
+      const isSensitive = (text: string) => {
+        // Làm sạch các dấu câu bao quanh từ OCR
+        const clean = text.trim().replace(/^['"([{<:;,.]+|['")\]}>:;,.]+$/g, "");
+        if (!clean || clean.length < 5) return false;
+
+        // Bỏ qua đường dẫn URL, file path, namespace package (@scope/pkg)
+        if (clean.startsWith("http://") || clean.startsWith("https://") || clean.startsWith("file://")) return false;
+        if (clean.includes("/") || clean.includes("\\")) return false;
+
+        if (EMAIL_REGEX.test(clean)) return true;
+        if (API_KEY_REGEX.test(clean)) return true;
+        if (JWT_REGEX.test(clean)) return true;
+        if (IPV4_REGEX.test(clean) && clean !== "127.0.0.1" && clean !== "0.0.0.0") return true;
+        if (CREDIT_CARD_REGEX.test(clean)) return true;
+        if (PHONE_VN_REGEX.test(clean)) return true;
+        if (clean.startsWith("+") && PHONE_INTL_REGEX.test(clean)) return true;
+
+        return false;
+      };
+
+      const sensitiveWords = res.words.filter((w) => isSensitive(w.text));
+      if (sensitiveWords.length === 0) {
+        flash("Không phát hiện thông tin nhạy cảm nào cần che (Email, Token, SĐT, IP)");
+        return;
+      }
+
+      for (const w of sensitiveWords) {
+        addAnnotation({
+          id: uid(),
+          type: "blur",
+          x: Math.max(0, w.x - 3),
+          y: Math.max(0, w.y - 2),
+          width: w.w + 6,
+          height: w.h + 4,
+          color: "#ef4444",
+          strokeWidth: 0,
+          blurMode: "pixelate",
+          blurRadius: 10,
+          solidColor: "#18181b",
+        });
+      }
+      flash(`Đã tự động che mờ ${sensitiveWords.length} vùng thông tin nhạy cảm! 🔒`);
+    } catch (e) {
+      flash(String(e));
     } finally {
       setBusy(false);
     }
@@ -771,6 +964,21 @@ export default function Editor() {
         e.preventDefault();
         doOpen();
       } else if (mod && e.key.toLowerCase() === "c") {
+        const sel = window.getSelection();
+        const selText = sel ? sel.toString().trim() : "";
+        if (selText.length > 0) {
+          e.preventDefault();
+          ipc.copyText(selText).catch(() => {
+            navigator.clipboard.writeText(selText).catch(() => {});
+          });
+          flash(`Đã sao chép đoạn chữ đã chọn! 📑`);
+          return;
+        }
+        const activeEl = document.activeElement;
+        const tagName = activeEl?.tagName?.toLowerCase();
+        if (tagName === "input" || tagName === "textarea" || (activeEl as HTMLElement)?.isContentEditable) {
+          return;
+        }
         e.preventDefault();
         doCopy();
       } else if (mod && (e.key === "a" || e.key === "A")) {
@@ -782,12 +990,22 @@ export default function Editor() {
       } else if (mod && e.key === "-") {
         e.preventDefault();
         stageRef.current?.zoomOut();
-      } else if (mod && e.key === "0") {
+      } else if (mod && (e.key === "0")) {
         e.preventDefault();
         stageRef.current?.zoomFit();
+      } else if (mod && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        ipc.openSettings().catch(() => {});
       } else if ((e.key === "Delete" || e.key === "Backspace") && (s.selectedId || s.selectedIds.length > 0)) {
         e.preventDefault();
         s.removeSelected();
+      } else if (e.key === "Escape") {
+        if (liveTextEnabled) {
+          e.preventDefault();
+          setLiveTextEnabled(false);
+          flash("Đã tắt chế độ Live Text");
+          return;
+        }
       } else if (e.key === "]" || (mod && e.key === "]")) {
         if (s.selectedId || s.selectedIds.length > 0) {
           e.preventDefault();
@@ -1134,6 +1352,12 @@ export default function Editor() {
           onSave={() => doSave(false)}
           onSaveAs={doSaveAs}
           onCopy={doCopy}
+          onPin={doPin}
+          onOcr={doOcr}
+          isLiveTextActive={liveTextEnabled}
+          hasOcrData={!!(ocrResult && ocrResult.words.length > 0)}
+          ocrWordCount={ocrResult?.words.length}
+          onAutoRedact={doAutoRedact}
           onSaveCopy={() => doSave(true)}
           onFlatten={doFlatten}
           onNew={doNew}
@@ -1169,7 +1393,16 @@ export default function Editor() {
             onFlash={flash}
           />
         ) : (
-          <AnnotationStage ref={stageRef} onFlash={flash} />
+          <AnnotationStage
+            ref={stageRef}
+            onFlash={flash}
+            ocrResult={ocrResult}
+            liveTextEnabled={liveTextEnabled}
+            onToggleLiveText={() => setLiveTextEnabled((v) => !v)}
+            onOpenOcrModal={() => setShowOcrModal(true)}
+            onCopyLiveText={handleCopyLiveText}
+            onRedactWords={handleRedactWords}
+          />
         )}
       </div>
       <HistoryStrip
@@ -1226,6 +1459,20 @@ export default function Editor() {
           onCancel={() => setStitchImage(null)}
         />
       )}
+      {showOcrModal && ocrResult && (
+        <OcrInspectorModal
+          text={ocrResult.text}
+          wordCount={ocrResult.words.length}
+          liveTextEnabled={liveTextEnabled}
+          onToggleLiveText={() => setLiveTextEnabled((v) => !v)}
+          onCopyAll={handleCopyLiveText}
+          onClose={() => setShowOcrModal(false)}
+          onFlash={flash}
+          onReRecognize={handleReRecognize}
+          isRecognizing={busy}
+        />
+      )}
+      <CommandPalette />
     </div>
   );
 }

@@ -33,6 +33,51 @@ pub fn copy_png_bytes(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Copy chuỗi văn bản (text) vào clipboard hệ thống.
+pub fn copy_text(text: &str) -> Result<(), String> {
+    // 1. Thử ghi clipboard qua arboard với vòng lặp thử lại tối đa 5 lần (đề phòng app khác lock clipboard)
+    for _ in 0..5 {
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            if clipboard.set_text(text).is_ok() {
+                return Ok(());
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(40));
+    }
+
+    // 2. Fallback đặc quyền trên Windows: Dùng Set-Clipboard qua stdin không sợ lỗi format/quote
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::Write;
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let child = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                "[Console]::InputEncoding = [System.Text.Encoding]::UTF8; $input | Set-Clipboard",
+            ])
+            .stdin(std::process::Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+        if let Ok(mut c) = child {
+            if let Some(mut stdin) = c.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            if let Ok(status) = c.wait() {
+                if status.success() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    Err("Không copy được văn bản vào clipboard hệ thống".into())
+}
+
 /// Copy file ảnh GIF vào clipboard hệ thống dưới dạng ảnh động (hoặc file drop).
 #[cfg(target_os = "macos")]
 pub fn copy_gif_file(path: &std::path::Path) -> Result<(), String> {
@@ -65,8 +110,14 @@ pub fn copy_gif_file(path: &std::path::Path) -> Result<(), String> {
     }
     let path_str = path.to_string_lossy();
     let script = format!("Set-Clipboard -Path '{}'", path_str.replace('\'', "''"));
-    let out = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+    let mut cmd = std::process::Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let out = cmd
         .output()
         .map_err(|e| format!("Lỗi gọi powershell: {e}"))?;
     if !out.status.success() {

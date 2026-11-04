@@ -20,10 +20,20 @@ pub fn peek_pending(state: State<AppState>) -> Result<tauri::ipc::Response, Stri
 #[tauri::command]
 pub fn take_pending(state: State<AppState>) -> Result<tauri::ipc::Response, String> {
     let mut guard = state.pending.lock().map_err(|_| "Lỗi lock pending".to_string())?;
-    match guard.take() {
-        Some(p) => Ok(tauri::ipc::Response::new(p.to_binary_payload())),
-        None => Ok(tauri::ipc::Response::new(Vec::new())),
+    if let Some(p) = guard.take() {
+        if let Ok(mut backup) = state.last_pending_backup.lock() {
+            *backup = Some((p.clone(), std::time::Instant::now()));
+        }
+        return Ok(tauri::ipc::Response::new(p.to_binary_payload()));
     }
+    if let Ok(backup) = state.last_pending_backup.lock() {
+        if let Some((ref p, ref timestamp)) = *backup {
+            if timestamp.elapsed() < std::time::Duration::from_secs(5) {
+                return Ok(tauri::ipc::Response::new(p.to_binary_payload()));
+            }
+        }
+    }
+    Ok(tauri::ipc::Response::new(Vec::new()))
 }
 
 /// Đọc (không xoá) video đang chờ mở trong Editor.
@@ -35,7 +45,21 @@ pub fn peek_pending_video(state: State<AppState>) -> Option<PendingVideo> {
 /// Lấy và xoá video đang chờ — Editor gọi khi mở/refresh.
 #[tauri::command]
 pub fn take_pending_video(state: State<AppState>) -> Option<PendingVideo> {
-    state.pending_video.lock().ok().and_then(|mut g| g.take())
+    let mut guard = state.pending_video.lock().ok()?;
+    if let Some(v) = guard.take() {
+        if let Ok(mut backup) = state.last_pending_video_backup.lock() {
+            *backup = Some((v.clone(), std::time::Instant::now()));
+        }
+        return Some(v);
+    }
+    if let Ok(backup) = state.last_pending_video_backup.lock() {
+        if let Some((ref v, ref timestamp)) = *backup {
+            if timestamp.elapsed() < std::time::Duration::from_secs(5) {
+                return Some(v.clone());
+            }
+        }
+    }
+    None
 }
 
 /// Ghi đè ảnh đang chờ với output="editor" — dùng cho nút "Mở Editor" ở
@@ -341,8 +365,8 @@ pub fn open_editor(app: AppHandle) -> Result<(), String> {
 
 /// async + spawn_blocking: cùng lý do với `open_capture_bar`.
 #[tauri::command]
-pub async fn open_settings(app: AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || windows::open_settings(&app))
+pub async fn open_settings(app: AppHandle, tab: Option<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || windows::open_settings(&app, tab))
         .await
         .map_err(|e| format!("Task join error: {e}"))?
 }
@@ -368,11 +392,44 @@ pub fn close_self(window: tauri::WebviewWindow) {
         let _ = window.minimize();
         return;
     }
+    if label.starts_with("pin-") {
+        if let Ok(mut map) = window.app_handle().state::<AppState>().pinned_images.lock() {
+            map.remove(label);
+        }
+        let _ = window.destroy();
+        return;
+    }
     if label == "capture-bar-popover" {
         let _ = window.hide();
         return;
     }
     let _ = window.close();
+}
+
+#[tauri::command]
+pub fn set_always_on_top(window: tauri::WebviewWindow, always_on_top: bool) -> Result<(), String> {
+    let _ = window.set_always_on_top(always_on_top);
+    #[cfg(target_os = "windows")]
+    if let Ok(raw_hwnd) = window.hwnd() {
+        use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, HWND_NOTOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+        };
+        let target_hwnd = raw_hwnd.0 as HWND;
+        let insert_after = if always_on_top { HWND_TOPMOST } else { HWND_NOTOPMOST };
+        unsafe {
+            SetWindowPos(
+                target_hwnd,
+                insert_after,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Frontend báo cửa sổ editor này đang có / không còn thay đổi chưa lưu.
@@ -1078,6 +1135,31 @@ pub async fn finalize_scroll_stitch(app: AppHandle, mx: Option<i32>, my: Option<
     crate::flow::finish(&app, cap, &output, scale_factor)
 }
 
+/// Gửi sự kiện cuộn chuột tự động (Auto-scroll mouse wheel) xuống màn hình.
+/// Dùng cho tính năng Chụp cuộn tự động thông minh (Smart Auto-Scroll).
+#[tauri::command]
+pub fn scroll_send_wheel(steps: i32, target_x: Option<i32>, target_y: Option<i32>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{mouse_event, MOUSEEVENTF_WHEEL};
+        use windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos;
+        unsafe {
+            if let (Some(x), Some(y)) = (target_x, target_y) {
+                SetCursorPos(x, y);
+            }
+            // steps dương = cuộn xuống (wheel delta âm: -120 * steps)
+            let wheel_delta = -steps * 120;
+            mouse_event(MOUSEEVENTF_WHEEL, 0, 0, wheel_delta, 0);
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (steps, target_x, target_y);
+        Err("Tự động cuộn hiện hỗ trợ trên Windows".to_string())
+    }
+}
+
 /// Lấy ảnh "đóng băng màn hình" (JPEG binary bytes) cho overlay có chỉ số `idx`.
 /// Frontend gọi khi mount overlay để lấy background tĩnh thay vì nhìn xuyên
 /// qua overlay trong suốt vào app đang chạy phía sau.
@@ -1341,4 +1423,151 @@ pub fn take_open_video_file(window: tauri::WebviewWindow, app: AppHandle) -> Opt
         .lock()
         .ok()?
         .remove(&label)
+}
+
+#[tauri::command]
+pub async fn pin_image(
+    app: AppHandle,
+    src: String,
+    width: Option<f64>,
+    height: Option<f64>,
+) -> Result<(), String> {
+    windows::open_pinned_window(&app, src, width, height)
+}
+
+#[tauri::command]
+pub fn open_webcam_bubble(app: AppHandle) -> Result<(), String> {
+    windows::open_webcam_bubble(&app)
+}
+
+#[tauri::command]
+pub fn close_webcam_bubble(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("webcam-bubble") {
+        let _ = win.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn is_webcam_bubble_open(app: AppHandle) -> bool {
+    app.get_webview_window("webcam-bubble").is_some()
+}
+
+#[tauri::command]
+pub fn get_pinned_image(app: AppHandle, label: String) -> Option<String> {
+    app.state::<AppState>()
+        .pinned_images
+        .lock()
+        .ok()?
+        .get(&label)
+        .cloned()
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct OcrWord {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct OcrLine {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    #[serde(default)]
+    pub words: Vec<OcrWord>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct OcrResult {
+    pub text: String,
+    pub words: Vec<OcrWord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<Vec<OcrLine>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
+}
+
+#[tauri::command]
+pub async fn run_ocr(image_data: String) -> Result<OcrResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join(format!("snapdoc_ocr_{}.png", uuid::Uuid::new_v4()));
+
+        let target_path = if image_data.starts_with("data:image") {
+            let parts: Vec<&str> = image_data.split(',').collect();
+            let base64_str = if parts.len() > 1 { parts[1] } else { parts[0] };
+            let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_str)
+                .map_err(|e| format!("Decode base64 thất bại: {e}"))?;
+            std::fs::write(&temp_path, bytes).map_err(|e| format!("Ghi file temp thất bại: {e}"))?;
+            temp_path.clone()
+        } else if std::path::Path::new(&image_data).exists() {
+            std::path::PathBuf::from(&image_data)
+        } else {
+            return Err("Dữ liệu ảnh không hợp lệ".to_string());
+        };
+
+        let ocr_script_path = temp_dir.join(format!("snapdoc_engine_ocr_{}.ps1", uuid::Uuid::new_v4()));
+        let script_content = include_str!("../../scripts/ocr.ps1");
+        let mut script_bytes = vec![0xEF, 0xBB, 0xBF];
+        script_bytes.extend_from_slice(script_content.as_bytes());
+        let _ = std::fs::write(&ocr_script_path, script_bytes);
+
+        let mut cmd = std::process::Command::new("powershell");
+        cmd.args(&[
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ocr_script_path.to_str().ok_or("Invalid script path")?,
+            "-ImagePath",
+            target_path.to_str().ok_or("Invalid target path")?,
+        ]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let output_res = cmd.output();
+
+        if temp_path.exists() {
+            let _ = std::fs::remove_file(&temp_path);
+        }
+        if ocr_script_path.exists() {
+            let _ = std::fs::remove_file(&ocr_script_path);
+        }
+
+        let output = output_res.map_err(|e| format!("Chạy PowerShell OCR thất bại: {e}"))?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Lỗi PowerShell OCR: {err}"));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let mut res = serde_json::from_str::<OcrResult>(&stdout)
+            .map_err(|e| format!("Parse JSON OCR thất bại: {e}. Output: {stdout}"))?;
+        res.engine = Some("windows".to_string());
+        Ok(res)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {e}"))?
+}
+
+#[tauri::command]
+pub fn copy_text(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    if let Ok(()) = app.clipboard().write_text(text.clone()) {
+        return Ok(());
+    }
+    clipboard::copy_text(&text)
 }

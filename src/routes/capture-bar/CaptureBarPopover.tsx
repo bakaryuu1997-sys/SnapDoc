@@ -214,6 +214,66 @@ export default function CaptureBarPopover() {
             {delaySeconds === d.id && <span style={checkMark}>✓</span>}
           </button>
         ))}
+
+        {/* Divider */}
+        <div style={popDivider} />
+
+        {/* Mở Editor */}
+        <button
+          style={{
+            ...popItem(false),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            color: "#67e8f9",
+            fontWeight: 500,
+          }}
+          onClick={() => {
+            ipc.hideCaptureBarPopover().catch(() => {});
+            ipc.openEditor().catch(() => {});
+          }}
+          className="popover-btn"
+          title="Mở cửa sổ SnapDoc Editor để chỉnh sửa ảnh"
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span>🎨</span>
+            <span>Mở Editor</span>
+          </span>
+        </button>
+
+        {/* Section 4: Bảng phím tắt nhanh */}
+        <button
+          style={{
+            ...popItem(false),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            color: "#93c5fd",
+            fontWeight: 500,
+          }}
+          onClick={() => {
+            ipc.hideCaptureBarPopover().catch(() => {});
+            ipc.openSettings("shortcuts").catch(() => {});
+          }}
+          className="popover-btn"
+          title="Xem bảng phím tắt hoặc tuỳ chỉnh phím nhanh (Ctrl+K)"
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span>⌨️</span>
+            <span>Bảng phím tắt</span>
+          </span>
+          <kbd style={{
+            fontSize: 10,
+            padding: "1px 6px",
+            borderRadius: 4,
+            background: "rgba(255, 255, 255, 0.12)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            color: "#ffffff",
+            fontWeight: 600,
+          }}>
+            Ctrl+K
+          </kbd>
+        </button>
       </div>
     </div>
   );

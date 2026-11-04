@@ -17,6 +17,15 @@ export default function Settings() {
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "installing" | "err">("idle");
   const [updateErr, setUpdateErr] = useState<string | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
+  const [activeTab, setActiveTab] = useState<"general" | "shortcuts" | "recording" | "permissions" | "cloud">(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get("tab");
+      if (p === "shortcuts" || p === "general" || p === "recording" || p === "permissions" || p === "cloud") {
+        return p;
+      }
+    } catch {}
+    return "general";
+  });
 
   const pendingRef = useRef<S | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -243,6 +252,45 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* ── Navigation Tabs ── */}
+      <div style={tabBar}>
+        <button
+          style={{ ...tabBtn, ...(activeTab === "general" ? tabBtnActive : null) }}
+          onClick={() => setActiveTab("general")}
+        >
+          <span>⚙️</span>
+          <span>{t("settings.tabGeneral", "Chung")}</span>
+        </button>
+        <button
+          style={{ ...tabBtn, ...(activeTab === "shortcuts" ? tabBtnActive : null) }}
+          onClick={() => setActiveTab("shortcuts")}
+        >
+          <span>⌨️</span>
+          <span>{t("settings.tabShortcuts", "Phím tắt")}</span>
+        </button>
+        <button
+          style={{ ...tabBtn, ...(activeTab === "recording" ? tabBtnActive : null) }}
+          onClick={() => setActiveTab("recording")}
+        >
+          <span>🎥</span>
+          <span>{t("settings.tabRecording", "Quay video")}</span>
+        </button>
+        <button
+          style={{ ...tabBtn, ...(activeTab === "permissions" ? tabBtnActive : null) }}
+          onClick={() => setActiveTab("permissions")}
+        >
+          <span>🔒</span>
+          <span>{t("settings.tabPermissions", "Quyền hạn")}</span>
+        </button>
+        <button
+          style={{ ...tabBtn, ...(activeTab === "cloud" ? tabBtnActive : null) }}
+          onClick={() => setActiveTab("cloud")}
+        >
+          <span>☁️</span>
+          <span>{t("settings.tabCloud", "Chia sẻ")}</span>
+        </button>
+      </div>
+
       {/* ── Scrollable body ── */}
       <div style={body}>
 
@@ -267,186 +315,237 @@ export default function Settings() {
           </div>
         )}
 
-        {/* SAVE FILE */}
-        <Card title={t("settings.saveFile")}>
-          <Field label={t("settings.saveDirLabel")}>
-            <div style={{ display: "flex", gap: 6 }}>
-              <input
-                style={{ flex: 1, minWidth: 0 }}
-                value={s.saveDir}
-                onChange={(e) => update({ saveDir: e.target.value }, { debounce: true })}
-              />
-              <button style={smallBtn} onClick={pickDir}>{t("settings.chooseDir")}</button>
-            </div>
-          </Field>
-          <Field label={t("settings.defaultBehavior")}>
-            <select
-              value={s.defaultOutput}
-              onChange={(e) => update({ defaultOutput: e.target.value as S["defaultOutput"] })}
-            >
-              {OUTPUTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
-          </Field>
-        </Card>
+                {/* ── TAB 1: GENERAL ── */}
+        {activeTab === "general" && (
+          <>
+            {/* SAVE FILE */}
+            <Card title={t("settings.saveFile")}>
+              <Field label={t("settings.saveDirLabel")}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    style={{ flex: 1, minWidth: 0 }}
+                    value={s.saveDir}
+                    onChange={(e) => update({ saveDir: e.target.value }, { debounce: true })}
+                  />
+                  <button style={smallBtn} onClick={pickDir}>{t("settings.chooseDir")}</button>
+                </div>
+              </Field>
+              <Field label={t("settings.defaultBehavior")}>
+                <select
+                  value={s.defaultOutput}
+                  onChange={(e) => update({ defaultOutput: e.target.value as S["defaultOutput"] })}
+                >
+                  {OUTPUTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </Field>
+            </Card>
 
-        {/* SCREEN RECORDING */}
-        <Card title={t("settings.recording")}>
-          <Field label={t("settings.audioLabel")}>
-            <select
-              value={s.recordAudioSource ?? "off"}
-              onChange={(e) => update({ recordAudioSource: e.target.value as S["recordAudioSource"] })}
-            >
-              <option value="off">{t("settings.audioOff")}</option>
-              <option value="mic">{t("settings.audioMic")}</option>
-              <option value="system">{t("settings.audioSystem")}</option>
-              <option value="both">{t("settings.audioBoth")}</option>
-            </select>
-          </Field>
-          <p style={hint}>
-            {t("settings.audioHint")}
-          </p>
-          <div style={{ ...toggleRow, marginTop: 16 }}>
-            <div>
-              <div style={toggleLabel}>{t("settings.recordSelf")}</div>
-              <div style={toggleDesc}>{t("settings.recordSelfDesc")}</div>
-            </div>
-            <Toggle
-              checked={s.recordSelf ?? false}
-              onChange={(v) => update({ recordSelf: v })}
-            />
-          </div>
+            {/* STARTUP */}
+            <Card title={t("settings.startup")}>
+              <div style={toggleRow}>
+                <div>
+                  <div style={toggleLabel}>{t("settings.launchAtLogin")}</div>
+                  <div style={toggleDesc}>{t("settings.launchAtLoginDesc")}</div>
+                </div>
+                <Toggle
+                  checked={s.launchAtLogin ?? true}
+                  onChange={async (v) => {
+                    update({ launchAtLogin: v });
+                    await ipc.setAutostart(v).catch(() => {});
+                  }}
+                />
+              </div>
+            </Card>
 
-          <div style={{ ...toggleRow, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-            <div>
-              <div style={toggleLabel}>{t("settings.showKeystrokes")}</div>
-              <div style={toggleDesc}>{t("settings.showKeystrokesDesc")}</div>
-            </div>
-            <Toggle
-              checked={s.recordShowKeystrokes ?? false}
-              onChange={async (v) => {
-                update({ recordShowKeystrokes: v });
-                if (v) {
-                  const ok = await ipc.checkAccessibilityPermission().catch(() => true);
-                  if (!ok) {
-                    await ipc.requestAccessibilityPermission().catch(() => {});
-                  }
-                }
-              }}
-            />
-          </div>
-
-          <div style={{ ...toggleRow, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-            <div>
-              <div style={toggleLabel}>{t("settings.showClicks")}</div>
-              <div style={toggleDesc}>{t("settings.showClicksDesc")}</div>
-            </div>
-            <Toggle
-              checked={s.recordShowClicks ?? true}
-              onChange={async (v) => {
-                update({ recordShowClicks: v });
-                if (v) {
-                  const ok = await ipc.checkAccessibilityPermission().catch(() => true);
-                  if (!ok) {
-                    await ipc.requestAccessibilityPermission().catch(() => {});
-                  }
-                }
-              }}
-            />
-          </div>
-        </Card>
-
-        {/* STARTUP */}
-        <Card title={t("settings.startup")}>
-          <div style={toggleRow}>
-            <div>
-              <div style={toggleLabel}>{t("settings.launchAtLogin")}</div>
-              <div style={toggleDesc}>{t("settings.launchAtLoginDesc")}</div>
-            </div>
-            <Toggle
-              checked={s.launchAtLogin ?? true}
-              onChange={async (v) => {
-                update({ launchAtLogin: v });
-                await ipc.setAutostart(v).catch(() => {});
-              }}
-            />
-          </div>
-        </Card>
-
-        {/* LANGUAGE */}
-        <Card title={t("settings.languageSection")}>
-          <Field label={t("settings.languageLabel")}>
-            <select
-              value={i18n.language}
-              onChange={(e) => {
-                const lang = e.target.value;
-                i18n.changeLanguage(lang);
-                localStorage.setItem("app-language", lang);
-                // Ghi luôn xuống settings.json — tray menu (native, Rust-side)
-                // không đọc được localStorage của webview, phải tự tra field
-                // này (xem `commands::set_settings` gọi `tray::rebuild_menu`).
-                update({ language: lang });
-              }}
-            >
-              <option value="en">English</option>
-              <option value="vi">Tiếng Việt</option>
-            </select>
-          </Field>
-        </Card>
-
-        {/* GLOBAL SHORTCUTS */}
-        <Card title={t("settings.shortcuts")}>
-          {hotkeyWarning && (
-            <div style={hotkeyWarningBox}>
-              ⚠ {hotkeyWarning} — {t("settings.hotkeyWarning")}
-            </div>
-          )}
-          <p style={hint}>
-            {t("settings.shortcutHint")}
-          </p>
-          {SHORTCUT_KEYS.map(({ key, label: lbl, hint: h }) => (
-            <ShortcutRow
-              key={key}
-              label={lbl}
-              hint={h}
-              value={s.shortcuts?.[key] ?? ""}
-              onChange={(v) => update({ shortcuts: { ...s.shortcuts, [key]: v } }, { shortcuts: true })}
-            />
-          ))}
-          {shortcutMsg === "ok" && <div style={successInline}>✓ {t("settings.shortcutUpdated")}</div>}
-          {shortcutMsg === "err" && <div style={errInline}>✕ {t("settings.shortcutError")}</div>}
-        </Card>
-
-        {/* SYSTEM PERMISSIONS */}
-        <Card title={t("settings.permissions")}>
-          <div style={permRow}>
-            <div>
-              <div style={permLabel}>{t("settings.screenRecording")}</div>
-              <div style={permDesc}>{t("settings.screenRecordingDesc")}</div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {/* Chỉ hiện khi chưa có quyền — Rust chỉ thật sự xin quyền trên
-                  macOS, OS khác `check_screen_permission` luôn true. */}
-              {perm === false && (
-                <button
-                  style={smallBtn}
-                  onClick={async () => {
-                    const ok = await ipc.requestScreenPermission().catch(() => false);
-                    setPermRequested(!ok);
-                    if (ok) setPerm(true);
-                    else ipc.checkPermission().then(setPerm).catch(() => {});
+            {/* LANGUAGE */}
+            <Card title={t("settings.languageSection")}>
+              <Field label={t("settings.languageLabel")}>
+                <select
+                  value={i18n.language}
+                  onChange={(e) => {
+                    const lang = e.target.value;
+                    i18n.changeLanguage(lang);
+                    localStorage.setItem("app-language", lang);
+                    update({ language: lang });
                   }}
                 >
-                  {t("settings.requestPermission")}
-                </button>
-              )}
-              <PermBadge granted={perm} />
-            </div>
-          </div>
-          {perm === false && permRequested && (
-            <div style={{ ...permDesc, marginTop: 8 }}>{t("settings.requestPermissionHint")}</div>
-          )}
-        </Card>
+                  <option value="en">English</option>
+                  <option value="vi">Tiếng Việt</option>
+                </select>
+              </Field>
+            </Card>
+          </>
+        )}
 
+        {/* ── TAB 2: SHORTCUTS ── */}
+        {activeTab === "shortcuts" && (
+          <>
+            {/* GLOBAL SHORTCUTS */}
+            <Card title={t("settings.shortcuts")}>
+              {hotkeyWarning && (
+                <div style={hotkeyWarningBox}>
+                  ⚠ {hotkeyWarning} — {t("settings.hotkeyWarning")}
+                </div>
+              )}
+              <p style={hint}>
+                {t("settings.shortcutHint")}
+              </p>
+              {SHORTCUT_KEYS.map(({ key, label: lbl, hint: h }) => (
+                <ShortcutRow
+                  key={key}
+                  label={lbl}
+                  hint={h}
+                  value={s.shortcuts?.[key] ?? ""}
+                  onChange={(v) => update({ shortcuts: { ...s.shortcuts, [key]: v } }, { shortcuts: true })}
+                />
+              ))}
+              {shortcutMsg === "ok" && <div style={successInline}>✓ {t("settings.shortcutUpdated")}</div>}
+              {shortcutMsg === "err" && <div style={errInline}>✕ {t("settings.shortcutError")}</div>}
+            </Card>
+
+            {/* EDITOR QUICK REFERENCE SHORTCUTS */}
+            <Card title={t("settings.editorShortcuts", "PHÍM TẮT TRONG EDITOR & CANVAS")}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "4px 0" }}>
+                {[
+                  { key: "Ctrl + Shift + T", desc: t("settings.shortcutInstantGrab", "Trích xuất chữ siêu tốc vào Clipboard") },
+                  { key: "K", desc: t("settings.shortcutCodeBlock", "Thêm khung code cú pháp đa ngôn ngữ") },
+                  { key: "C", desc: t("settings.shortcutCrop", "Cắt xén khung hình (Crop)") },
+                  { key: "T", desc: t("settings.shortcutLiveText", "Bật/Tắt Live Text OCR") },
+                  { key: "Esc", desc: t("settings.shortcutEscape", "Thoát công cụ / Hủy thao tác") },
+                ].map((item) => (
+                  <div
+                    key={item.key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      background: "rgba(255, 255, 255, 0.03)",
+                    }}
+                  >
+                    <span style={{ fontSize: 13, color: "var(--text)" }}>{item.desc}</span>
+                    <kbd
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 4,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        background: "var(--bg-elevated)",
+                        border: "1px solid var(--border)",
+                        color: "#93c5fd",
+                      }}
+                    >
+                      {item.key}
+                    </kbd>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </>
+        )}
+
+        {/* ── TAB 3: RECORDING ── */}
+        {activeTab === "recording" && (
+          <Card title={t("settings.recording")}>
+            <Field label={t("settings.audioLabel")}>
+              <select
+                value={s.recordAudioSource ?? "off"}
+                onChange={(e) => update({ recordAudioSource: e.target.value as S["recordAudioSource"] })}
+              >
+                <option value="off">{t("settings.audioOff")}</option>
+                <option value="mic">{t("settings.audioMic")}</option>
+                <option value="system">{t("settings.audioSystem")}</option>
+                <option value="both">{t("settings.audioBoth")}</option>
+              </select>
+            </Field>
+            <p style={hint}>
+              {t("settings.audioHint")}
+            </p>
+            <div style={{ ...toggleRow, marginTop: 16 }}>
+              <div>
+                <div style={toggleLabel}>{t("settings.recordSelf")}</div>
+                <div style={toggleDesc}>{t("settings.recordSelfDesc")}</div>
+              </div>
+              <Toggle
+                checked={s.recordSelf ?? false}
+                onChange={(v) => update({ recordSelf: v })}
+              />
+            </div>
+
+            <div style={{ ...toggleRow, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+              <div>
+                <div style={toggleLabel}>{t("settings.showKeystrokes")}</div>
+                <div style={toggleDesc}>{t("settings.showKeystrokesDesc")}</div>
+              </div>
+              <Toggle
+                checked={s.recordShowKeystrokes ?? false}
+                onChange={async (v) => {
+                  update({ recordShowKeystrokes: v });
+                  if (v) {
+                    const ok = await ipc.checkAccessibilityPermission().catch(() => true);
+                    if (!ok) {
+                      await ipc.requestAccessibilityPermission().catch(() => {});
+                    }
+                  }
+                }}
+              />
+            </div>
+
+            <div style={{ ...toggleRow, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+              <div>
+                <div style={toggleLabel}>{t("settings.showClicks")}</div>
+                <div style={toggleDesc}>{t("settings.showClicksDesc")}</div>
+              </div>
+              <Toggle
+                checked={s.recordShowClicks ?? true}
+                onChange={async (v) => {
+                  update({ recordShowClicks: v });
+                  if (v) {
+                    const ok = await ipc.checkAccessibilityPermission().catch(() => true);
+                    if (!ok) {
+                      await ipc.requestAccessibilityPermission().catch(() => {});
+                    }
+                  }
+                }}
+              />
+            </div>
+          </Card>
+        )}
+
+        {/* ── TAB 4: PERMISSIONS ── */}
+        {activeTab === "permissions" && (
+          <Card title={t("settings.permissions")}>
+            <div style={permRow}>
+              <div>
+                <div style={permLabel}>{t("settings.screenRecording")}</div>
+                <div style={permDesc}>{t("settings.screenRecordingDesc")}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {perm === false && (
+                  <button
+                    style={smallBtn}
+                    onClick={async () => {
+                      const ok = await ipc.requestScreenPermission().catch(() => false);
+                      setPermRequested(!ok);
+                      if (ok) setPerm(true);
+                      else ipc.checkPermission().then(setPerm).catch(() => {});
+                    }}
+                  >
+                    {t("settings.requestPermission")}
+                  </button>
+                )}
+                <PermBadge granted={perm} />
+              </div>
+            </div>
+            {perm === false && permRequested && (
+              <div style={{ ...permDesc, marginTop: 8 }}>{t("settings.requestPermissionHint")}</div>
+            )}
+          </Card>
+        )}
+
+        {/* ── TAB 5: CLOUD SHARE (Google Drive) ── */}
+        {activeTab === "cloud" && <CloudShareTab s={s} update={update} />}
       </div>
 
       {/* ── Footer ── */}
@@ -475,6 +574,110 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label style={fieldLabel}>{label}</label>
       {children}
     </div>
+  );
+}
+
+/** Tab "Chia sẻ" — kết nối Google Drive của chính người dùng (OAuth2, chuẩn
+ * installed-app loopback, xem `drive.rs`) để dùng tính năng "Chia sẻ qua
+ * Drive" ở History/Editor. Client ID/Secret lưu trong settings.json (cục bộ
+ * máy người dùng) — KHÔNG gửi đi đâu ngoài trực tiếp tới Google. */
+function CloudShareTab({ s, update }: { s: S; update: (patch: Partial<S>, opts?: { debounce?: boolean }) => void }) {
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
+
+  useEffect(() => {
+    ipc.driveIsConnected().then(setConnected).catch(() => setConnected(false));
+  }, []);
+
+  const canConnect = !!(s.driveClientId?.trim() && s.driveClientSecret?.trim());
+
+  const handleConnect = async () => {
+    if (!canConnect || connecting) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      await ipc.driveConnect(s.driveClientId!.trim(), s.driveClientSecret!.trim());
+      setConnected(true);
+    } catch (e) {
+      setError(String(e));
+      setConnected(false);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    await ipc.driveDisconnect().catch(() => {});
+    setConnected(false);
+  };
+
+  return (
+    <>
+      <Card title="Cloud Share — Google Drive của bạn">
+        <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.6, marginBottom: 10 }}>
+          Kết nối tài khoản Google Drive của chính bạn để chia sẻ ảnh/video đã lưu qua 1 đường link,
+          không cần tài khoản thứ ba. SnapDoc chỉ xin quyền với file do chính nó tạo ra trên Drive
+          (<code>drive.file</code>) — không đọc được các file khác trong Drive của bạn.
+        </div>
+
+        <button
+          style={{ ...smallBtn, marginBottom: 10 }}
+          onClick={() => setShowGuide((v) => !v)}
+        >
+          {showGuide ? "Ẩn hướng dẫn lấy Client ID" : "📖 Hướng dẫn lấy Client ID / Secret"}
+        </button>
+        {showGuide && (
+          <ol style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.8, paddingLeft: 18, marginBottom: 12 }}>
+            <li>Vào <strong>console.cloud.google.com</strong> → tạo 1 project mới (hoặc dùng project có sẵn).</li>
+            <li>Vào <strong>APIs &amp; Services → Library</strong>, tìm bật <strong>Google Drive API</strong>.</li>
+            <li>Vào <strong>APIs &amp; Services → OAuth consent screen</strong>: chọn "External", điền tên app
+              (vd "SnapDoc"), lưu. Ở mục "Test users", thêm đúng email Gmail bạn sẽ dùng để kết nối.</li>
+            <li>Vào <strong>APIs &amp; Services → Credentials → Create Credentials → OAuth client ID</strong>,
+              chọn loại <strong>"Desktop app"</strong>, đặt tên tuỳ ý, bấm Create.</li>
+            <li>Copy <strong>Client ID</strong> và <strong>Client Secret</strong> vừa hiện ra, dán vào 2 ô bên dưới.</li>
+          </ol>
+        )}
+
+        <Field label="Client ID">
+          <input
+            style={{ width: "100%" }}
+            placeholder="xxxxxxxxxx.apps.googleusercontent.com"
+            value={s.driveClientId ?? ""}
+            onChange={(e) => update({ driveClientId: e.target.value }, { debounce: true })}
+          />
+        </Field>
+        <Field label="Client Secret">
+          <input
+            style={{ width: "100%" }}
+            type="password"
+            placeholder="GOCSPX-..."
+            value={s.driveClientSecret ?? ""}
+            onChange={(e) => update({ driveClientSecret: e.target.value }, { debounce: true })}
+          />
+        </Field>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+          {connected ? (
+            <>
+              <span style={{ fontSize: 12.5, color: "#34d399", fontWeight: 600 }}>✓ Đã kết nối Google Drive</span>
+              <button style={smallBtn} onClick={handleDisconnect}>Ngắt kết nối</button>
+            </>
+          ) : (
+            <button style={smallBtn} onClick={handleConnect} disabled={!canConnect || connecting}>
+              {connecting ? "Đang chờ đăng nhập trên trình duyệt…" : "Kết nối Google Drive"}
+            </button>
+          )}
+        </div>
+        {!canConnect && !connected && (
+          <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 6 }}>
+            Điền đủ Client ID và Client Secret ở trên để bật nút kết nối.
+          </div>
+        )}
+        {error && <div style={{ ...errBanner, marginTop: 10 }}>⚠ {error}</div>}
+      </Card>
+    </>
   );
 }
 
@@ -1018,4 +1221,36 @@ const toggleDesc: React.CSSProperties = {
   fontSize: 11,
   color: "var(--text-dim)",
   marginTop: 2,
+};
+
+const tabBar: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "0 12px 10px",
+  borderBottom: "1px solid var(--border)",
+  flexShrink: 0,
+};
+
+const tabBtn: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "6px 12px",
+  borderRadius: 6,
+  border: "1px solid transparent",
+  background: "transparent",
+  color: "var(--text-dim)",
+  fontSize: 12.5,
+  fontWeight: 500,
+  cursor: "pointer",
+  transition: "all 0.15s ease",
+};
+
+const tabBtnActive: React.CSSProperties = {
+  background: "var(--bg-elevated)",
+  color: "var(--text)",
+  borderColor: "var(--border)",
+  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
+  fontWeight: 600,
 };

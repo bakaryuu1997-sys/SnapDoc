@@ -1263,8 +1263,8 @@ mod tests {
     /// thuyết.
     #[test]
     fn trims_video_by_keeping_two_ranges() {
-        let width = 160u32;
-        let height = 120u32;
+        let width = 320u32;
+        let height = 240u32;
         let fps = 10u32;
         let frame_count = 50u32; // 5s
 

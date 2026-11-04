@@ -10,9 +10,12 @@ import {
   SOLID_COLORS,
   BACKGROUND_PRESETS,
   DEFAULT_BACKGROUND_CONFIG,
+  BADGE_PRESETS,
   type Tool,
   type Annotation,
+  type BadgeVariant,
 } from "../../features/annotation/model";
+import { CODE_LANGUAGES } from "../../lib/codeHighlighter";
 
 /** Icon 18×18, dùng currentColor để kế thừa màu nút. */
 const ICONS: Record<Tool, ReactNode> = {
@@ -121,6 +124,18 @@ const ICONS: Record<Tool, ReactNode> = {
       <rect x="4.5" y="4.5" width="9" height="9" rx="1.5" fill="currentColor" opacity="0.65" />
     </svg>
   ),
+  badge: (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+      <rect x="2.5" y="4.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" transform="rotate(-12 9 9)" />
+      <text x="9" y="11" textAnchor="middle" fontSize="6.5" fontWeight="bold" fill="currentColor" transform="rotate(-12 9 9)">STAMP</text>
+    </svg>
+  ),
+  "code-block": (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+      <rect x="2" y="2.5" width="14" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M5.5 8L3.5 10L5.5 12M12.5 8L14.5 10L12.5 12M10 7L8 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
 };
 
 const FONT_MIN = 8;
@@ -144,6 +159,12 @@ interface Props {
   onNew: () => void;
   onOpen: () => void;
   onStitch: () => void;
+  onPin?: () => void;
+  onOcr?: () => void;
+  isLiveTextActive?: boolean;
+  hasOcrData?: boolean;
+  ocrWordCount?: number;
+  onAutoRedact?: () => void;
   busy: boolean;
 }
 
@@ -385,7 +406,7 @@ function ColorStopButton({
 }
 
 export default function Toolbar({
-  mode, onSave, onSaveAs, onCopy, onSaveCopy, onFlatten, onNew, onOpen, onStitch, busy,
+  mode, onSave, onSaveAs, onCopy, onSaveCopy, onFlatten, onNew, onOpen, onStitch, onPin, onOcr, isLiveTextActive, hasOcrData, ocrWordCount, onAutoRedact, busy,
 }: Props) {
   const { t } = useTranslation();
 
@@ -408,6 +429,8 @@ export default function Toolbar({
     { id: "blur", label: t("tools.blur"), hint: "B" },
     { id: "crop", label: t("tools.crop"), hint: "C" },
     { id: "background", label: t("tools.background"), hint: "G" },
+    { id: "badge", label: "Dấu bản quyền (-12°)", hint: "S" },
+    { id: "code-block", label: "Khung Code (Syntax)", hint: "K" },
   ];
 
   // Selector + useShallow thay vì subscribe cả store: trước đây MỌI thay đổi
@@ -431,6 +454,8 @@ export default function Toolbar({
     setStepCounter, setArrowCounter, setRectCounter,
     renumberSteps, renumberArrows, renumberRects,
     setBackground, setBackgroundLive, commitBackground,
+    badgeVariant, setBadgeVariant,
+    codeLanguage, setCodeLanguage,
     doc,
   } = useEditor(
     useShallow((s) => ({
@@ -449,6 +474,8 @@ export default function Toolbar({
       setStepCounter: s.setStepCounter, setArrowCounter: s.setArrowCounter, setRectCounter: s.setRectCounter,
       renumberSteps: s.renumberSteps, renumberArrows: s.renumberArrows, renumberRects: s.renumberRects,
       setBackground: s.setBackground, setBackgroundLive: s.setBackgroundLive, commitBackground: s.commitBackground,
+      badgeVariant: s.badgeVariant, setBadgeVariant: s.setBadgeVariant,
+      codeLanguage: s.codeLanguage, setCodeLanguage: s.setCodeLanguage,
       doc: s.doc,
     })),
   );
@@ -512,9 +539,51 @@ export default function Toolbar({
   const isNumberedRect = !isMultiple && (tool === "numbered-rect" || selectedAnn?.type === "numbered-rect");
   const isCrop = tool === "crop";
   const isBackground = tool === "background";
+  const isBadge = tool === "badge" || selectedAnn?.type === "badge";
+  const isCodeBlock = tool === "code-block" || selectedAnn?.type === "code-block";
   const isImage = (!isMultiple && selectedAnn?.type === "image") || (isMultiple && selectedAnns.length > 0 && selectedAnns.every((a: Annotation) => a.type === "image"));
   // Tools dùng color + strokeWidth: hiển thị đầy đủ khi ở chế độ vẽ hoặc khi ở chế độ chọn/sửa
   const hasStroke = isMultiple ? selectedAnns.some((a: Annotation) => "strokeWidth" in a) : (!isHighlight && !isBlur && !isText && !isCrop && !isImage && !isBackground);
+
+  const currentBg = doc?.background;
+  const handleQuickBeautify = () => {
+    if (!currentBg || !currentBg.enabled) {
+      setBackground({
+        enabled: true,
+        type: "gradient",
+        presetId: "sunset",
+        colors: ["#f97316", "#e11d48", "#8b5cf6"],
+        angle: 135,
+        padding: 32,
+        borderRadius: 12,
+        shadow: "medium",
+      });
+      setTool("background");
+    } else {
+      if (currentBg.presetId === "sunset") {
+        setBackground({
+          ...currentBg,
+          presetId: "ocean",
+          colors: ["#06b6d4", "#2563eb", "#4f46e5"],
+        });
+      } else if (currentBg.presetId === "ocean") {
+        setBackground({
+          ...currentBg,
+          presetId: "lavender",
+          colors: ["#4f46e5", "#9333ea", "#f43f5e"],
+        });
+      } else if (currentBg.presetId === "lavender") {
+        setBackground({
+          ...currentBg,
+          presetId: "cyberpunk",
+          colors: ["#7928ca", "#ff0080", "#ff7a00"],
+        });
+      } else {
+        setBackground(null);
+        setTool("select");
+      }
+    }
+  };
 
   if (mode === "video") return null;
 
@@ -550,6 +619,21 @@ export default function Toolbar({
                     <rect x="2" y="8.5" width="11" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
                   </svg>
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{t("editorToolbar.stitchButton")}</span>
+                </button>
+
+                {/* 1-Click Beautifier */}
+                <button
+                  onClick={handleQuickBeautify}
+                  style={{
+                    ...newBtn,
+                    background: currentBg?.enabled ? "rgba(245, 158, 11, 0.2)" : newBtn.background,
+                    color: currentBg?.enabled ? "#fbbf24" : newBtn.color,
+                    border: currentBg?.enabled ? "1px solid rgba(245, 158, 11, 0.4)" : "none",
+                  }}
+                  title={t("editorToolbar.beautifyHint")}
+                >
+                  <span style={{ fontSize: 13, lineHeight: 1 }}>✨</span>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{t("editorToolbar.beautify")}</span>
                 </button>
               </div>
 
@@ -759,6 +843,98 @@ export default function Toolbar({
                       </button>
                     ))}
                   </div>
+                </>
+              )}
+
+              {/* Code block controls — khi tool = code-block hoặc đang chọn code-block */}
+              {isCodeBlock && (
+                <>
+                  <div style={group}>
+                    <span style={dimLabel}>Ngôn ngữ code:</span>
+                    {CODE_LANGUAGES.map((l) => {
+                      const isActive = (selectedAnn?.type === "code-block" ? selectedAnn.language : codeLanguage) === l.id;
+                      return (
+                        <button
+                          key={l.id}
+                          type="button"
+                          onClick={() => {
+                            setCodeLanguage(l.id);
+                            if (selectedAnn?.type === "code-block") {
+                              useEditor.getState().updateAnnotation(selectedAnn.id, {
+                                language: l.id,
+                                title: l.defaultTitle,
+                              });
+                            }
+                          }}
+                          style={{
+                            ...modeBtn(isActive),
+                            fontWeight: isActive ? 700 : 500,
+                          }}
+                          title={`Tô màu cú pháp ${l.label}`}
+                        >
+                          {l.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedAnn?.type === "code-block" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentLang = selectedAnn.language || codeLanguage;
+                        const preset = CODE_LANGUAGES.find((l) => l.id === currentLang);
+                        if (preset) {
+                          useEditor.getState().updateAnnotation(selectedAnn.id, {
+                            code: preset.sample,
+                            title: preset.defaultTitle,
+                          });
+                        }
+                      }}
+                      style={{ ...modeBtn(false), marginLeft: 4 }}
+                      title="Nạp đoạn mã mẫu cho ngôn ngữ này"
+                    >
+                      <span>⚡ Mẫu code</span>
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Badge controls — khi tool = badge hoặc đang chọn badge */}
+              {isBadge && (
+                <>
+                  <div style={group}>
+                    <span style={dimLabel}>Mẫu dấu (-12°):</span>
+                    {(["confidential", "approved", "in_progress", "blocker"] as BadgeVariant[]).map((v) => {
+                      const p = BADGE_PRESETS[v];
+                      const isActive = badgeVariant === v;
+                      return (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => {
+                            setBadgeVariant(v);
+                            if (selectedAnn?.type === "badge") {
+                              useEditor.getState().updateAnnotation(selectedAnn.id, {
+                                variant: v,
+                                text: p.text,
+                                color: p.color,
+                              });
+                            }
+                          }}
+                          style={{
+                            ...modeBtn(isActive),
+                            color: isActive ? p.color : undefined,
+                            borderColor: isActive ? p.color : undefined,
+                            fontWeight: 700,
+                          }}
+                          title={`Mẫu dấu ${p.text} nghiêng -12°`}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={sep} />
                 </>
               )}
 
@@ -1255,6 +1431,61 @@ export default function Toolbar({
               </svg>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{t("editorToolbar.copyBtn")}</span>
             </button>
+
+            {onPin && (
+              <button
+                onClick={onPin}
+                disabled={busy}
+                style={actionBtn}
+                title="Ghim ảnh lên màn hình (Pin to screen)"
+              >
+                <span style={{ fontSize: 13, lineHeight: 1 }}>📌</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Ghim</span>
+              </button>
+            )}
+
+            {onOcr && (
+              <button
+                onClick={onOcr}
+                disabled={busy}
+                style={{
+                  ...actionBtn,
+                  ...(isLiveTextActive ? {
+                    background: "rgba(59, 130, 246, 0.35)",
+                    color: "#93c5fd",
+                    border: "1.5px solid #3b82f6",
+                    boxShadow: "0 0 12px rgba(59, 130, 246, 0.4)",
+                  } : hasOcrData ? {
+                    background: "rgba(59, 130, 246, 0.22)",
+                    color: "#93c5fd",
+                    border: "1px solid rgba(59, 130, 246, 0.45)",
+                  } : null),
+                }}
+                title={isLiveTextActive ? "Đang bật chế độ Live Text (bôi đen chữ trên ảnh). Nhấn để TẮT hoặc nhấn phím Esc" : hasOcrData ? `Bật chế độ Live Text (${ocrWordCount || ""} từ)` : "Trích xuất toàn bộ chữ trong ảnh (OCR)"}
+              >
+                <span style={{ fontSize: 13, lineHeight: 1 }}>📑</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>
+                  {isLiveTextActive ? "Tắt Live Text" : hasOcrData && ocrWordCount ? `OCR (${ocrWordCount})` : "OCR"}
+                </span>
+              </button>
+            )}
+
+            {onAutoRedact && (
+              <button
+                onClick={onAutoRedact}
+                disabled={busy}
+                style={{
+                  ...actionBtn,
+                  background: "rgba(239, 68, 68, 0.15)",
+                  color: "#fca5a5",
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                }}
+                title="Tự động nhận diện và làm mờ Email, Token, API Key, SĐT, IP (Smart Auto-Redact)"
+              >
+                <span style={{ fontSize: 13, lineHeight: 1 }}>🔒</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Che nhạy cảm</span>
+              </button>
+            )}
           </div>
     </div>
   );

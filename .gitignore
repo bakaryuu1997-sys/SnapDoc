@@ -23,3 +23,8 @@ dist-win/
 # encrypted .enc backups. Back them up to a password manager or private
 # cloud storage instead (see scripts/backup-keys.sh / restore-keys.sh).
 secrets/
+
+# B?n build cai ??t c?c b? + d? li?u OCR t?i/t?o l?i ???c ? khong commit
+/release/
+/*.traineddata
+/test_ocr/

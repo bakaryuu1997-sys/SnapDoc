@@ -237,3 +237,63 @@ input[type="range"].editor-slider::-moz-range-thumb {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
+
+/* Capture Bar Styles */
+.capture-bar-scope-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: var(--text) !important;
+}
+.capture-bar-record-btn:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  color: #ffffff !important;
+}
+.capture-bar-quick-btn:hover {
+  background: rgba(245, 158, 11, 0.28) !important;
+}
+.capture-bar-opt-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+.capture-bar-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: var(--text) !important;
+}
+
+
+/* SnapDoc Live Text Selection Layer: continuous, smooth, gapless selection */
+.snapdoc-live-text-column::selection,
+.snapdoc-live-text-column *::selection,
+.snapdoc-live-text-line::selection,
+.snapdoc-live-text-line *::selection,
+.snapdoc-live-text-word::selection {
+  background: rgba(59, 130, 246, 0.45) !important;
+  color: transparent !important;
+}
+.snapdoc-live-text-column::-moz-selection,
+.snapdoc-live-text-column *::-moz-selection,
+.snapdoc-live-text-line::-moz-selection,
+.snapdoc-live-text-line *::-moz-selection,
+.snapdoc-live-text-word::-moz-selection {
+  background: rgba(59, 130, 246, 0.45) !important;
+  color: transparent !important;
+}
+
+/* Marquee / Box Selection Box */
+.snapdoc-marquee-box {
+  position: absolute;
+  border: 1.5px dashed #3b82f6;
+  background: rgba(59, 130, 246, 0.16);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 55;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
+}
+.snapdoc-word-marquee-selected {
+  background: rgba(59, 130, 246, 0.45) !important;
+  border-radius: 2px;
+}
+
+/* Optimize canvas rendering: crisp high-contrast text at all zoom levels */
+.konvajs-content canvas {
+  image-rendering: -webkit-optimize-contrast;
+}

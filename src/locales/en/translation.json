@@ -55,7 +55,17 @@
     "languageSection": "LANGUAGE",
     "languageLabel": "Display language",
     "requestPermission": "Grant access",
-    "requestPermissionHint": "If no prompt appeared, enable SnapDoc in System Settings › Privacy & Security › Screen Recording, then restart SnapDoc."
+    "requestPermissionHint": "If no prompt appeared, enable SnapDoc in System Settings › Privacy & Security › Screen Recording, then restart SnapDoc.",
+    "tabGeneral": "General",
+    "tabShortcuts": "Shortcuts",
+    "tabRecording": "Recording",
+    "tabPermissions": "Permissions",
+    "editorShortcuts": "EDITOR SHORTCUTS",
+    "shortcutCodeBlock": "Add syntax-highlighted code box",
+    "shortcutCrop": "Crop canvas frame",
+    "shortcutLiveText": "Toggle Live Text OCR",
+    "shortcutInstantGrab": "Instant Text Grab to Clipboard",
+    "shortcutEscape": "Cancel / Exit tool"
   },
   "updates": {
     "checkingUpdates": "Checking…",
@@ -177,7 +187,10 @@
     "quickCaptureHint": "Quick capture — select area and annotate immediately",
     "options": "Options",
     "close": "Close",
-    "quick": "Quick"
+    "quick": "Quick",
+    "recordFull": "Record Screen",
+    "recordWindow": "Record Window",
+    "recordRegion": "Record Region"
   },
   "overlay": {
     "dragToSelect": "Drag to select area • Hover a window and click to capture it • Esc / right-click to cancel",
@@ -281,7 +294,19 @@
     "rangeToday": "Today",
     "rangeLast7": "Last 7 days",
     "rangeLast30": "Last 30 days",
-    "rangeCustom": "Custom range"
+    "rangeCustom": "Custom range",
+    "emptyTitle": "Your Library is Ready",
+    "emptyDesc": "Capture screenshots to store, organize, and edit them at any time.",
+    "captureNowBtn": "Capture Region Now",
+    "trashEmptyTitle": "Trash is Empty",
+    "trashEmptyDesc": "Deleted images and videos will appear here before being permanently removed.",
+    "filterEmptyTitle": "No Matching Captures",
+    "filterEmptyDesc": "No captures match the selected filters.",
+    "clearFilterBtn": "Clear Filters",
+    "deletedToast": "Moved {{count}} item(s) to Trash",
+    "undo": "Undo",
+    "pin": "Pin",
+    "pinTooltip": "Pin floating image always-on-top"
   },
   "thumbnail": {
     "openEditorTooltip": "Click to open editor",
@@ -289,7 +314,8 @@
     "editTitle": "Edit",
     "copyTitle": "Copy",
     "saveTitle": "Save",
-    "closeTitle": "Close"
+    "closeTitle": "Close",
+    "pinTitle": "Pin to screen"
   },
   "tray": {
     "quickCapture": "Quick capture",
@@ -389,7 +415,9 @@
     "copyBtn": "Copy",
     "blurModeShort": "Blur",
     "pixelModeShort": "Pixel",
-    "solidModeShort": "Solid"
+    "solidModeShort": "Solid",
+    "beautify": "Beautify",
+    "beautifyHint": "Auto round corners, 3D shadow and gradient background (1-Click Beautifier)"
   },
   "editorMain": {
     "copiedClipboard": "Copied to clipboard",
@@ -574,7 +602,12 @@
     "autoZoomOn": "Auto Zoom Focus following mouse actions",
     "autoZoomOff": "Turn off mouse Zoom Focus",
     "autoZoomLabel": "Focus",
-    "addZoomAtPlayhead": "Add a Zoom Focus region at the current time"
+    "addZoomAtPlayhead": "Add a Zoom Focus region at the current time",
+    "smoothCursorLabel": "Cinematic Cursor",
+    "smoothCursorOn": "Enable Screen Studio Cinematic Cursor (Bezier Smoothing)",
+    "smoothCursorOff": "Disable Cinematic Cursor",
+    "rippleOn": "Enable Click Ripple Waves",
+    "rippleOff": "Disable Click Ripple Waves"
   },
   "gifExport": {
     "title": "Export Animated GIF",
@@ -646,5 +679,43 @@
     "apply": "Apply crop",
     "copy": "Copy",
     "cancel": "Cancel"
+  },
+  "captions": {
+    "openTooltip": "Auto captions (AI)",
+    "title": "Auto captions (AI)",
+    "subtitle": "Whisper.cpp runs offline on your PC — your video never leaves your machine.",
+    "close": "Close",
+    "unsupported": "AI captions are currently Windows-only.",
+    "setupTitle": "First-time setup",
+    "setupDesc": "Needs the Whisper engine ({{engine}}) and one speech model. Files are downloaded from github.com/ggml-org/whisper.cpp and huggingface.co/ggerganov/whisper.cpp and verified with SHA-256 before use.",
+    "modelBase": "Fast",
+    "modelSmall": "Balanced (recommended)",
+    "modelTurbo": "Most accurate",
+    "installed": "installed",
+    "install": "Download & install",
+    "installing": "Downloading…",
+    "language": "Spoken language",
+    "langAuto": "Auto-detect",
+    "model": "Model",
+    "working": "Working…",
+    "cancel": "Cancel",
+    "generate": "Generate captions",
+    "regenerate": "Regenerate captions",
+    "empty": "No captions yet. Click “Generate captions” to start.",
+    "seek": "Jump to this line",
+    "remove": "Remove this line",
+    "copyText": "Copy text",
+    "saveSrt": "Save .srt",
+    "exportSoft": "Export video (toggleable captions)",
+    "exportBurn": "Export video (burned into picture)",
+    "copied": "Caption text copied",
+    "savedSrt": "Caption file (.srt) saved",
+    "savedVideo": "Video with captions exported",
+    "stageEngine": "Downloading Whisper engine…",
+    "stageModel": "Downloading model…",
+    "stageAudio": "Extracting audio…",
+    "stageTranscribe": "Recognizing speech…",
+    "stageExport": "Exporting video…",
+    "note": "Captions are generated from the original video file that is open — cuts/speed changes made in the editor are not applied. Save the edited video first if you want captions to match the trimmed version."
   }
 }

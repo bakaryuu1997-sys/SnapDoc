@@ -1,6 +1,8 @@
 mod capture;
+mod captions;
 mod clipboard;
 mod commands;
+mod drive;
 mod flow;
 mod history;
 mod hotkey;
@@ -62,6 +64,20 @@ fn init_history(handle: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    {
+        // Kích hoạt SharedArrayBuffer và WebAssembly đa luồng cho WebView2
+        let current_args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+        if !current_args.contains("--enable-features=SharedArrayBuffer") {
+            let new_args = if current_args.is_empty() {
+                "--enable-features=SharedArrayBuffer".to_string()
+            } else {
+                format!("{current_args} --enable-features=SharedArrayBuffer")
+            };
+            std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", new_args);
+        }
+    }
+
     #[cfg(debug_assertions)]
     redirect_stdio_to_dev_log();
 
@@ -157,7 +173,25 @@ pub fn run() {
             windows::resize_capture_bar,
             commands::open_editor,
             commands::open_settings,
+            commands::pin_image,
+            commands::open_webcam_bubble,
+            commands::close_webcam_bubble,
+            commands::is_webcam_bubble_open,
+            drive::drive_connect,
+            drive::drive_is_connected,
+            drive::drive_disconnect,
+            drive::drive_upload,
+            captions::captions_status,
+            captions::captions_setup,
+            captions::captions_cancel,
+            captions::captions_transcribe,
+            captions::captions_save_srt,
+            captions::captions_export_video,
+            commands::run_ocr,
+            commands::copy_text,
+            commands::get_pinned_image,
             commands::close_self,
+            commands::set_always_on_top,
             commands::set_editor_dirty,
             commands::save_snapdoc_file,
             commands::hide_thumbnail,
@@ -191,6 +225,7 @@ pub fn run() {
             commands::scroll_bridge,
             commands::scroll_set_options,
             commands::finalize_scroll_stitch,
+            commands::scroll_send_wheel,
             commands::start_recording,
             commands::get_frozen_screen,
             commands::notify_overlay_ready,
@@ -217,6 +252,7 @@ pub fn run() {
             history::commands::get_history_asset_bytes,
             history::commands::save_history_doc,
             history::commands::get_history_preview_bytes,
+            history::commands::drive_upload_history_item,
             history::commands::put_history_draft,
             history::commands::discard_history_draft,
             history::commands::get_history_doc_json,

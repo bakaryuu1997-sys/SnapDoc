@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { ipc } from "../../lib/ipc";
 import { copyToClipboard, saveToFile } from "../../features/output/useOutput";
+import { recognizeImage } from "../../lib/ocrService";
 
 export default function Thumbnail() {
   const { t } = useTranslation();
@@ -101,6 +102,29 @@ export default function Thumbnail() {
     if (src) await copyToClipboard(src).catch((e) => console.error("Thumbnail copy failed:", e));
     dismiss();
   };
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const doOcr = async () => {
+    stopAutoClose();
+    if (!src) return;
+    setOcrLoading(true);
+    try {
+      const res = await recognizeImage(src);
+      if (res && res.text && res.text.trim().length > 0) {
+        await ipc.copyText(res.text).catch(async () => { await navigator.clipboard.writeText(res.text).catch(() => {}); });
+      }
+    } catch (e) {
+      console.error("Thumbnail OCR failed:", e);
+    } finally {
+      setOcrLoading(false);
+      dismiss();
+    }
+  };
+
+  const pin = async () => {
+    stopAutoClose();
+    if (src) await ipc.pinImage(src).catch((e) => console.error("Thumbnail pin failed:", e));
+    dismiss();
+  };
   const saveFile = async () => {
     stopAutoClose();
     if (src) await saveToFile(src).catch((e) => console.error("Thumbnail save failed:", e));
@@ -109,10 +133,26 @@ export default function Thumbnail() {
 
   return (
     <div style={card}>
-      {src && <img src={src} style={preview} onClick={edit} title={t("thumbnail.openEditorTooltip")} />}
+      {src && (
+        <img
+          src={src}
+          style={preview}
+          onClick={edit}
+          title={t("thumbnail.openEditorTooltip")}
+          draggable
+          onDragStart={(e) => {
+            stopAutoClose();
+            const filename = `SnapDoc_${Date.now()}.png`;
+            e.dataTransfer.setData("DownloadURL", `image/png:${filename}:${src}`);
+            e.dataTransfer.setData("text/plain", src);
+          }}
+        />
+      )}
       <div style={actions}>
         <button style={btn} onClick={edit} title={t("thumbnail.editTitle")}>{t("thumbnail.editButton")}</button>
         <button style={btn} onClick={copy} title={t("thumbnail.copyTitle")}>📋</button>
+        <button style={btn} onClick={pin} title={t("thumbnail.pinTitle")}>📌</button>
+        <button style={btn} onClick={doOcr} title="Trích xuất chữ (OCR)">{ocrLoading ? "⏳" : "📝"}</button>
         <button style={btn} onClick={saveFile} title={t("thumbnail.saveTitle")}>💾</button>
         <button style={btn} onClick={dismiss} title={t("thumbnail.closeTitle")}>✕</button>
       </div>

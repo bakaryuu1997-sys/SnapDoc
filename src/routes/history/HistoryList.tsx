@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { useHistory } from "./useHistoryStore";
 import HistoryListRow from "./HistoryListRow";
+import HistoryEmptyState from "./HistoryEmptyState";
 
 const ROW_HEIGHT = 60;
 
@@ -75,7 +76,7 @@ export default function HistoryList({ onOpenEditor }: Props) {
       </div>
       <div ref={parentRef} style={scrollArea}>
         {items.length === 0 && !loading ? (
-          <div style={emptyState}>{t("historyView.noCaptures")}</div>
+          <HistoryEmptyState />
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualRows.map((vRow) => {
@@ -127,16 +128,6 @@ const scrollArea: React.CSSProperties = {
   minHeight: 0,
   overflowY: "auto",
   padding: "6px 0",
-};
-
-const emptyState: React.CSSProperties = {
-  flex: 1,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "var(--text-dim)",
-  fontSize: 13,
-  height: "100%",
 };
 
 const loadingRow: React.CSSProperties = {

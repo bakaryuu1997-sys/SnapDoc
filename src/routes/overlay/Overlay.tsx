@@ -10,6 +10,7 @@ import { PRESET_COLORS, type Tool } from "../../features/annotation/model";
 import { quickToolFromKey } from "../../lib/toolShortcuts";
 import QuickToolbar, { quickToolbarLayout } from "../quick-capture/QuickToolbar";
 import { serializeDoc } from "../../features/annotation/sessions";
+import { recognizeImage } from "../../lib/ocrService";
 
 /**
  * Lấy ảnh "đóng băng màn hình" từ Rust (JPEG base64) khi mount overlay.
@@ -251,9 +252,188 @@ function pickWindow(wins: WindowInfo[], x: number, y: number): WindowInfo | null
  * xem `ScrollBorder.tsx`) NGAY TẠI VỊ TRÍ đã đứng yên — không một cửa sổ nào
  * bị đóng/tạo lại nên không có khoảng hở gây "nháy khung".
  */
+
+type ColorFormat = "hex" | "rgb" | "hsl" | "flutter";
+
+function formatPixelColor(r: number, g: number, b: number, format: ColorFormat): string {
+  switch (format) {
+    case "rgb":
+      return `rgb(${r}, ${g}, ${b})`;
+    case "hsl": {
+      const rn = r / 255, gn = g / 255, bn = b / 255;
+      const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+      let h = 0, s = 0, l = (max + min) / 2;
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case rn: h = (gn - bn) / d + (gn < bn ? 6 : 0); break;
+          case gn: h = (bn - rn) / d + 2; break;
+          case bn: h = (rn - gn) / d + 4; break;
+        }
+        h /= 6;
+      }
+      return `hsl(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
+    }
+    case "flutter": {
+      const hex = [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("").toUpperCase();
+      return `0xFF${hex}`;
+    }
+    case "hex":
+    default:
+      return "#" + [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+}
+
+interface PixelLoupeProps {
+  cursorPos: Vec2;
+  frozenImg: HTMLImageElement | null;
+  onColorChange: (formatted: string, rawHex: string) => void;
+  copiedHex: string | null;
+  colorFormat: ColorFormat;
+}
+
+function PixelLoupe({ cursorPos, frozenImg, onColorChange, copiedHex, colorFormat }: PixelLoupeProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [currentHex, setCurrentHex] = useState<string>("#000000");
+  const [currentFormatted, setCurrentFormatted] = useState<string>("#000000");
+
+  const [x, y] = cursorPos;
+  const LOUPE_SIZE = 88;
+  const SAMPLE_SIZE = 11;
+
+  useEffect(() => {
+    const animId = requestAnimationFrame(() => {
+      const canvas = canvasRef.current;
+      if (!canvas || !frozenImg) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, LOUPE_SIZE, LOUPE_SIZE);
+
+      const scaleX = frozenImg.naturalWidth / window.innerWidth;
+      const scaleY = frozenImg.naturalHeight / window.innerHeight;
+      const sx = Math.max(0, x * scaleX - (SAMPLE_SIZE / 2) * scaleX);
+      const sy = Math.max(0, y * scaleY - (SAMPLE_SIZE / 2) * scaleY);
+      const sw = SAMPLE_SIZE * scaleX;
+      const sh = SAMPLE_SIZE * scaleY;
+
+      ctx.drawImage(frozenImg, sx, sy, sw, sh, 0, 0, LOUPE_SIZE, LOUPE_SIZE);
+
+      // Pixel grid lines
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+      ctx.lineWidth = 1;
+      const step = LOUPE_SIZE / SAMPLE_SIZE;
+      for (let i = 0; i <= LOUPE_SIZE; i += step) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, LOUPE_SIZE);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(LOUPE_SIZE, i);
+        ctx.stroke();
+      }
+
+      // Center pixel color
+      const centerPx = ctx.getImageData(Math.floor(LOUPE_SIZE / 2), Math.floor(LOUPE_SIZE / 2), 1, 1).data;
+      const r = centerPx[0], g = centerPx[1], b = centerPx[2];
+      const hex = "#" + [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("").toUpperCase();
+      const formatted = formatPixelColor(r, g, b, colorFormat);
+      setCurrentHex(hex);
+      setCurrentFormatted(formatted);
+      onColorChange(formatted, hex);
+
+      // Center pixel highlight
+      const half = Math.floor(SAMPLE_SIZE / 2) * step;
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(half, half, step, step);
+    });
+
+    return () => cancelAnimationFrame(animId);
+  }, [x, y, frozenImg, onColorChange, colorFormat]);
+
+  const posX = x + 24 + 130 > window.innerWidth ? x - 135 : x + 24;
+  const posY = y + 24 + 130 > window.innerHeight ? y - 145 : y + 24;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: posX,
+        top: posY,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 3,
+        padding: "5px 7px",
+        background: "rgba(18, 18, 22, 0.95)",
+        border: "1.5px solid rgba(255, 255, 255, 0.18)",
+        borderRadius: 9,
+        boxShadow: "0 6px 20px rgba(0,0,0,0.55)",
+        pointerEvents: "none",
+        zIndex: 9999,
+      }}
+    >
+      <div style={{ width: LOUPE_SIZE, height: LOUPE_SIZE, borderRadius: "50%", overflow: "hidden", border: "2px solid #f59e0b" }}>
+        <canvas ref={canvasRef} width={LOUPE_SIZE} height={LOUPE_SIZE} />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: "#fff", fontFamily: "monospace" }}>
+        <span style={{ width: 10, height: 10, borderRadius: 2, background: currentHex, border: "1px solid rgba(255,255,255,0.4)" }} />
+        <span>{copiedHex === currentFormatted ? "✓ Đã chép!" : currentFormatted}</span>
+      </div>
+      <div style={{ fontSize: 9.5, color: "#9ca3af", display: "flex", gap: 6, alignItems: "center" }}>
+        <span style={{ color: "#38bdf8", fontWeight: 600 }}>[{colorFormat.toUpperCase()}]</span>
+        <span style={{ color: "#f59e0b", fontWeight: 600 }}>Shift+C: Đổi</span>
+        <span style={{ color: "#f59e0b", fontWeight: 600 }}>C: Copy</span>
+      </div>
+    </div>
+  );
+}
+
 function RegionSelect() {
   const { t } = useTranslation();
+  const session = useContext(OverlayContext);
   const { url: frozenUrl, ready: frozenReady } = useFrozenScreen();
+  const frozenImgRef = useRef<HTMLImageElement | null>(null);
+  const [colorFormat, setColorFormat] = useState<ColorFormat>("hex");
+  const currentHexRef = useRef<string>("");
+  const currentFormattedColorRef = useRef<string>("");
+  const [copiedHex, setCopiedHex] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!frozenUrl) {
+      frozenImgRef.current = null;
+      return;
+    }
+    const img = new Image();
+    img.src = frozenUrl;
+    img.onload = () => { frozenImgRef.current = img; };
+  }, [frozenUrl]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.shiftKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        setColorFormat((prev) => {
+          if (prev === "hex") return "rgb";
+          if (prev === "rgb") return "hsl";
+          if (prev === "hsl") return "flutter";
+          return "hex";
+        });
+        return;
+      }
+      if (!e.shiftKey && (e.key === "c" || e.key === "C") && currentFormattedColorRef.current) {
+        navigator.clipboard.writeText(currentFormattedColorRef.current).catch(() => {});
+        setCopiedHex(currentFormattedColorRef.current);
+        setTimeout(() => setCopiedHex(null), 1200);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const startRef = useRef<Vec2 | null>(null);
   const [sel, setSel] = useState<Sel | null>(null);
   // Vùng vừa chốt (mouseup) — giữ lại NGOÀI `sel` (bị xoá về null ngay khi thả
@@ -358,6 +538,51 @@ function RegionSelect() {
       }
       const r = rectFrom(s[0], s[1], x, y);
       if (r.w >= 3 && r.h >= 3) {
+        if (session.mode === "text-grab") {
+          const img = frozenImgRef.current;
+          if (!img) {
+            ipc.closeSelf();
+            return;
+          }
+          const scaleX = img.naturalWidth / window.innerWidth;
+          const scaleY = img.naturalHeight / window.innerHeight;
+          const sx = Math.round(r.x * scaleX);
+          const sy = Math.round(r.y * scaleY);
+          const sw = Math.round(r.w * scaleX);
+          const sh = Math.round(r.h * scaleY);
+
+          if (sw < 6 || sh < 6) {
+            ipc.closeSelf();
+            return;
+          }
+
+          const offCanvas = document.createElement("canvas");
+          offCanvas.width = sw;
+          offCanvas.height = sh;
+          const offCtx = offCanvas.getContext("2d");
+          if (offCtx) {
+            offCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+            const dataUrl = offCanvas.toDataURL("image/png");
+            recognizeImage(dataUrl)
+              .then(async (res) => {
+                const text = (res.text || "").trim();
+                if (text) {
+                  await ipc.copyText(text);
+                  if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(text);
+                  }
+                }
+                ipc.closeSelf();
+              })
+              .catch(() => {
+                ipc.closeSelf();
+              });
+          } else {
+            ipc.closeSelf();
+          }
+          return;
+        }
+
         scrollRectRef.current = r;
         ipc.finalizeRegion(r.x, r.y, r.w, r.h).catch((e) => {
           scrollRectRef.current = null;
@@ -462,7 +687,7 @@ function RegionSelect() {
             background: cursorHere ? "transparent" : frozenUrl ? "rgba(0,0,0,0.45)" : "rgba(0,0,0,0.5)",
           }}
         >
-          <div style={banner}>{t("overlay.dragToSelect")}</div>
+          <div style={banner}>{session.mode === "text-grab" ? "📑 Kéo chọn vùng để trích xuất chữ vào Clipboard (Ctrl+Shift+T)" : t("overlay.dragToSelect")}</div>
         </div>
       )}
       {/* Gợi ý cửa sổ khi hover — chỉ trước khi press (`sel === null`), ẩn
@@ -487,6 +712,20 @@ function RegionSelect() {
       {!sel && (
         <RegionFullscreenButton rectRef={fsBtnRef} />
       )}
+            {/* Kính lúp Pixel & Bắt mã màu linh hoạt (HEX/RGB/HSL/Flutter) */}
+      {cursorPos && cursorHere && !scrollRect && (!sel || sel.w === 0) && (
+        <PixelLoupe
+          cursorPos={cursorPos}
+          frozenImg={frozenImgRef.current}
+          onColorChange={(formatted, rawHex) => {
+            currentFormattedColorRef.current = formatted;
+            currentHexRef.current = rawHex;
+          }}
+          copiedHex={copiedHex}
+          colorFormat={colorFormat}
+        />
+      )}
+
       {/* Đường dóng ngang/dọc nét đứt kéo dài hết màn hình theo vị trí con
           trỏ — giúp canh mép vùng chọn theo nội dung bên dưới, giống vạch
           dóng của Snagit. */}

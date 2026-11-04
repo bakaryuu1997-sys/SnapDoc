@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Annotation, BackgroundConfig, Doc, TextAnn, Tool } from "./model";
+import type { Annotation, BackgroundConfig, Doc, TextAnn, Tool, BadgeVariant, CodeLanguage } from "./model";
 import { HIGHLIGHT_COLORS } from "./model";
 
 const HISTORY_LIMIT = 30;
@@ -14,7 +14,7 @@ const HISTORY_LIMIT = 30;
 const COALESCE_KEYS = new Set(["color", "strokeWidth", "fontSize", "blurMode", "solidColor", "blurRadius", "bgColor"]);
 const COALESCE_WINDOW_MS = 800;
 /** Các tool vẽ hình cho phép click lại hình đã vẽ để chỉnh ngay, không cần chuyển sang Select. */
-export const EDIT_TOOLS = new Set<string>(["rect", "ellipse", "arrow", "double-arrow", "line", "numbered-arrow", "numbered-rect", "highlight", "blur"]);
+export const EDIT_TOOLS = new Set<string>(["rect", "ellipse", "arrow", "double-arrow", "line", "numbered-arrow", "numbered-rect", "highlight", "blur", "badge"]);
 
 interface EditorState {
   doc: Doc | null;
@@ -70,6 +70,8 @@ interface EditorState {
   /** Bộ đếm số thứ tự cho tool "numbered-rect" (khung số). */
   rectCounter: number;
   editingTextId: string | null;
+  badgeVariant: BadgeVariant;
+  codeLanguage: CodeLanguage;
 
   // setup
   /** `markClean` = doc vừa nạp có coi như "đã lưu" hay không. Mặc định `true`
@@ -106,6 +108,8 @@ interface EditorState {
   // tool / style
   setEditingText: (id: string | null) => void;
   setTool: (t: Tool) => void;
+  setBadgeVariant: (v: BadgeVariant) => void;
+  setCodeLanguage: (l: CodeLanguage) => void;
   setColor: (c: string) => void;
   setHighlightColor: (c: string) => void;
   setStrokeWidth: (w: number) => void;
@@ -200,6 +204,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   arrowCounter: 1,
   rectCounter: 1,
   editingTextId: null,
+  badgeVariant: "confidential" as BadgeVariant,
+  codeLanguage: "typescript" as CodeLanguage,
+  setBadgeVariant: (v) => set({ badgeVariant: v }),
+  setCodeLanguage: (l) => set({ codeLanguage: l }),
   _lastCommitKey: null,
   _lastCommitAt: 0,
 

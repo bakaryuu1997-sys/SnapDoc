@@ -1,13 +1,13 @@
 [package]
 name = "snapdoc"
-version = "3.8.1"
+version = "3.9.0"
 description = "SnapDoc — fast screenshot + annotation app"
 authors = ["SnapDoc"]
 edition = "2021"
 
 [lib]
 name = "snapdoc_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["lib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -41,6 +41,18 @@ image = "0.25"
 arboard = "3"
 
 base64 = "0.22"
+
+# Cloud Share (Google Drive) — OAuth2 loopback (RFC 8252) + upload Drive API v3.
+# `ureq` (HTTP client đồng bộ, không cần runtime async riêng) + `tiny_http`
+# (server HTTP cục bộ tối giản chỉ để bắt redirect `http://127.0.0.1:<port>/callback`)
+# thay vì reqwest+tokio-full — nhẹ hơn nhiều cho vài lệnh gọi ngắn, không chạy
+# liên tục.
+ureq = { version = "2", features = ["json"] }
+tiny_http = "0.12"
+
+# Auto Caption (Whisper.cpp chạy cục bộ) — kiểm tra SHA-256 của engine/model
+# tải về trước khi giải nén/chạy (captions.rs).
+sha2 = "0.10"
 
 # Container `.snapdoc` (ảnh nền + lớp annotation trong 1 file) — xem
 # `snapdoc_file.rs`. Đã có sẵn trong Cargo.lock (dependency gián tiếp của
@@ -147,9 +159,7 @@ opt-level = 3
 
 [profile.release]
 codegen-units = 1
-lto = true
-opt-level = "s"
-# panic = "abort" đã bỏ: với "abort", catch_unwind không bắt được panic từ xcap/WGC
-# → process bị kill thay vì báo lỗi. Dùng default "unwind" để có thể recover.
-[profile.release.build-override]
-strip = false
+lto = false
+opt-level = 1
+incremental = false
+strip = true

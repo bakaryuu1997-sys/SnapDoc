@@ -12,6 +12,7 @@ pub const DEFAULT_COPY: &str = "CmdOrCtrl+Shift+C";
 pub const DEFAULT_SCROLL: &str = "CmdOrCtrl+Shift+6";
 pub const DEFAULT_QUICK: &str = "CmdOrCtrl+Shift+Q";
 pub const DEFAULT_RECORD: &str = "CmdOrCtrl+Shift+7";
+pub const DEFAULT_TEXT_GRAB: &str = "CmdOrCtrl+Shift+T";
 
 /// Lấy map (action → combo) từ settings.
 /// Trả về empty string nếu user đã xóa phím tắt (không fall back về default).
@@ -40,6 +41,7 @@ pub fn shortcuts_from_settings(app: &AppHandle) -> Vec<(String, String)> {
         ("scroll".into(),      get("scroll",      DEFAULT_SCROLL)),
         ("quick".into(),       get("quick",       DEFAULT_QUICK)),
         ("record".into(),      get("record",      DEFAULT_RECORD)),
+        ("textGrab".into(),    get("textGrab",    DEFAULT_TEXT_GRAB)),
     ]
 }
 
@@ -95,13 +97,23 @@ pub fn handle(app: &AppHandle, fired: &Shortcut) {
 
 fn run_action(app: &AppHandle, action: &str) {
     // Chống spam phím tắt (xem `flow::try_begin_capture_trigger`).
-    if matches!(action, "region" | "full" | "quick" | "window" | "all" | "scroll" | "captureCopy")
+    if matches!(action, "region" | "full" | "quick" | "window" | "all" | "scroll" | "captureCopy" | "textGrab")
         && !flow::try_begin_capture_trigger(app)
     {
         return;
     }
 
     match action {
+        "textGrab" => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                flow::hide_editor_for_freeze(&app);
+                if let Err(e) = windows::open_overlays(&app, "text-grab") {
+                    windows::show_editor_if_hidden_for_capture(&app);
+                    crate::notify::error(&app, &format!("Không mở được trích xuất chữ: {e}"));
+                }
+            });
+        }
         "bar" => {
             let _ = windows::open_capture_bar(app);
         }
@@ -113,13 +125,8 @@ fn run_action(app: &AppHandle, action: &str) {
         "record" => {
             let app = app.clone();
             std::thread::spawn(move || {
-                // Bật/tắt theo PHA của phiên quay — bản cũ dựa vào `status()`
-                // (None cả lúc đang khởi động lẫn lúc đang lưu) nên bấm 2 lần
-                // để dừng lại bắt đầu 1 phiên quay MỚI trong lúc phiên cũ còn
-                // đang lưu.
                 match crate::record::phase(&app) {
                     crate::record::Phase::Recording => {
-                        // Lỗi lưu file đã được `stop_recording` tự báo cho người dùng.
                         if let Err(e) = crate::record::stop_recording(&app) {
                             eprintln!("[SnapDoc] Dừng quay (phím tắt) thất bại: {e}");
                         }
@@ -131,23 +138,12 @@ fn run_action(app: &AppHandle, action: &str) {
                     }
                     crate::record::Phase::Idle => {}
                 }
-                // Nhiều màn hình: mở overlay chọn quay màn hình nào (đúng
-                // hành vi mode "full" của nút "Quay" trong CaptureBar, xem
-                // `flow::run_record_picker`) — 1 màn hình thì quay thẳng
-                // luôn, không có gì để chọn nên bỏ qua overlay cho nhanh.
                 let monitor_count = xcap::Monitor::all().map(|m| m.len()).unwrap_or(1);
                 if monitor_count > 1 {
                     flow::run_record_picker(&app, "full");
                 } else {
-                    // 1 màn hình → quay THẲNG, không qua overlay chọn màn nào.
-                    // Nhưng vẫn phải ẩn editor/capture-bar trước: đường
-                    // `run_record_picker` ở trên tự làm việc này, còn đường này
-                    // thì trước đây không — nên cửa sổ editor bị quay luôn vào
-                    // video.
                     flow::hide_editor_for_freeze(&app);
                     if let Err(e) = crate::record::start_recording(&app) {
-                        // Quay không khởi động được → mở lại editor + báo lỗi
-                        // (trước đây chỉ eprintln — vô hình với người dùng).
                         windows::show_editor_if_hidden_for_capture(&app);
                         crate::notify::error(&app, &format!("Không bắt đầu quay được: {e}"));
                     }

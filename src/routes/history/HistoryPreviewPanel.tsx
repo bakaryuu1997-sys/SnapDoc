@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { ipc } from "../../lib/ipc";
+import { showError } from "../../lib/notify";
 import { useHistory } from "./useHistoryStore";
 import { modeLabel } from "./HistoryItemCard";
 import { fmtDateTime, fmtSize, fmtDuration } from "./formatUtils";
@@ -19,6 +20,7 @@ export default function HistoryPreviewPanel({ onOpenEditor }: Props) {
   const clearSelection = useHistory((s) => s.clearSelection);
   const filter = useHistory((s) => s.filter);
   const patchItem = useHistory((s) => s.patchItem);
+  const showToast = useHistory((s) => s.showToast);
   const removeItem = useHistory((s) => s.removeItem);
   const removeItems = useHistory((s) => s.removeItems);
 
@@ -75,9 +77,11 @@ export default function HistoryPreviewPanel({ onOpenEditor }: Props) {
 
     const doBatchDelete = async () => {
       setBusy(true);
+      const toDelete = [...selectedIds];
       try {
-        await ipc.deleteHistoryItems(selectedIds);
-        removeItems(selectedIds);
+        await ipc.deleteHistoryItems(toDelete);
+        removeItems(toDelete);
+        showToast(t("history.deletedToast", { count: toDelete.length }), toDelete);
       } finally {
         setBusy(false);
       }
@@ -186,8 +190,12 @@ export default function HistoryPreviewPanel({ onOpenEditor }: Props) {
     setBusy(true);
     try {
       await ipc.deleteHistoryItem(item.id);
-      if (!filter.trashOnly) removeItem(item.id);
-      else patchItem(item.id, { deletedAt: Date.now() });
+      if (!filter.trashOnly) {
+        removeItem(item.id);
+        showToast(t("history.deletedToast", { count: 1 }), [item.id]);
+      } else {
+        patchItem(item.id, { deletedAt: Date.now() });
+      }
     } finally {
       setBusy(false);
     }
@@ -216,6 +224,28 @@ export default function HistoryPreviewPanel({ onOpenEditor }: Props) {
   };
 
   const doReveal = () => ipc.revealHistoryItem(item.id).catch(() => {});
+
+  const [shareStatus, setShareStatus] = useState<"idle" | "uploading" | "done" | "err">("idle");
+  const [shareErr, setShareErr] = useState<string | null>(null);
+  const doShareDrive = async () => {
+    setShareStatus("uploading");
+    setShareErr(null);
+    try {
+      const res = await ipc.driveUploadHistoryItem(item.id);
+      await ipc.copyText(res.link);
+      setShareStatus("done");
+      setTimeout(() => setShareStatus("idle"), 2500);
+    } catch (e) {
+      setShareErr(String(e));
+      setShareStatus("err");
+    }
+  };
+
+  const doPin = () => {
+    if (previewUrl) {
+      ipc.pinImage(previewUrl, item.width, item.height).catch(showError);
+    }
+  };
 
   return (
     <div style={panel}>
@@ -275,7 +305,16 @@ export default function HistoryPreviewPanel({ onOpenEditor }: Props) {
         {!isTrashed ? (
           <>
             <button style={primaryBtn} disabled={busy} onClick={() => onOpenEditor(item.id)}>{t("history.openEditor")}</button>
+            <button style={secondaryBtn} disabled={busy || !previewUrl} onClick={doPin} title={t("history.pinTooltip")}>📌 {t("history.pin")}</button>
             <button style={secondaryBtn} disabled={busy} onClick={doReveal}>{t("history.showInFinder")}</button>
+            <button
+              style={secondaryBtn}
+              disabled={busy || shareStatus === "uploading"}
+              onClick={doShareDrive}
+              title="Tải lên Google Drive của bạn và copy link chia sẻ vào Clipboard"
+            >
+              {shareStatus === "uploading" ? "⏳ Đang tải lên…" : shareStatus === "done" ? "✓ Đã copy link" : "☁️ Chia sẻ qua Drive"}
+            </button>
             <button style={dangerBtn} disabled={busy} onClick={doDelete}>{t("history.moveToTrash")}</button>
           </>
         ) : (
@@ -285,6 +324,9 @@ export default function HistoryPreviewPanel({ onOpenEditor }: Props) {
           </>
         )}
       </div>
+      {shareStatus === "err" && shareErr && (
+        <div style={{ fontSize: 11.5, color: "#f87171", lineHeight: 1.5 }}>⚠ {shareErr}</div>
+      )}
     </div>
   );
 }

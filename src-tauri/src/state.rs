@@ -178,6 +178,8 @@ pub struct FrozenScreen {
 #[derive(Default)]
 pub struct AppState {
     pub pending: Mutex<Option<PendingCapture>>,
+    pub last_pending_backup: Mutex<Option<(PendingCapture, std::time::Instant)>>,
+    pub last_pending_video_backup: Mutex<Option<(PendingVideo, std::time::Instant)>>,
     /// Video đang chờ mở trong Editor — xem `PendingVideo`.
     pub pending_video: Mutex<Option<PendingVideo>>,
     /// Output đã chọn trước khi chụp (cho luồng region/window qua overlay).
@@ -208,6 +210,10 @@ pub struct AppState {
     /// macOS: thông tin video "Open with" theo label cửa sổ editor. Lưu PendingVideo đầy đủ
     /// thay vì chỉ đường dẫn file.
     pub open_video_files: Mutex<HashMap<String, PendingVideo>>,
+    /// Dữ liệu ảnh ghim nổi (Always-on-top) theo label cửa sổ (pin-N).
+    pub pinned_images: Mutex<HashMap<String, String>>,
+    /// Bộ đếm tạo label cửa sổ ghim duy nhất (pin-N).
+    pub pin_seq: AtomicU64,
     /// Bộ đếm tạo label cửa sổ editor "Open with" duy nhất (editor-ow-N).
     /// Chỉ sử dụng trên macOS khi "Open with" được gọi.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]

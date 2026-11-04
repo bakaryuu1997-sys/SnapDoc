@@ -1115,6 +1115,42 @@ pub async fn get_history_preview_bytes(
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// Chia sẻ 1 item trong History qua Google Drive của người dùng (Cloud
+/// Share) — ảnh dùng bản `preview.png` ĐÃ ghép annotation (đúng cái user thấy
+/// trên thumbnail/Editor), video dùng file `.mp4` thật (ưu tiên bản Save
+/// As gần nhất nếu còn tồn tại, giống `reveal_history_item_sync`). Xem
+/// `drive::upload_bytes_blocking`.
+#[tauri::command]
+pub async fn drive_upload_history_item(
+    app: AppHandle,
+    id: String,
+) -> Result<crate::drive::DriveUploadResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let rec = get_history_item_sync(&app, &id)?;
+        let safe_name = rec
+            .title
+            .clone()
+            .filter(|t| !t.trim().is_empty())
+            .unwrap_or_else(|| "SnapDoc".to_string());
+
+        let (bytes, file_name) = if rec.media_type == "video" {
+            let path = match &rec.exported_path {
+                Some(p) if std::path::Path::new(p).exists() => p.clone(),
+                _ => rec.asset_path.clone(),
+            };
+            let b = std::fs::read(&path).map_err(|e| format!("Không đọc được file video: {e}"))?;
+            (b, format!("{safe_name}.mp4"))
+        } else {
+            let b = load_asset_preview(&rec)?;
+            (b, format!("{safe_name}.png"))
+        };
+
+        crate::drive::upload_bytes_blocking(&app, bytes, file_name)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {e}"))?
+}
+
 /// Lớp annotation hiệu lực của một item (nháp nếu có, ngược lại bản đã lưu).
 #[tauri::command]
 pub async fn get_history_doc_json(app: AppHandle, id: String) -> Result<Option<DocLayer>, String> {

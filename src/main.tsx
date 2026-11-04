@@ -40,6 +40,8 @@ const routeLoaders: Record<string, () => Promise<{ default: React.ComponentType<
   "capture-timer": () => import("./routes/capture-timer/CaptureTimer"),
   "record-keystroke": () => import("./routes/record-keystroke/RecordKeystroke"),
   "record-clicks": () => import("./routes/record-clicks/RecordClicks"),
+  pin: () => import("./routes/pin/PinnedWindow"),
+  "webcam-bubble": () => import("./routes/webcam-bubble/WebcamBubble"),
 };
 
 const loader = routeLoaders[which] ?? routeLoaders["capture-bar"];

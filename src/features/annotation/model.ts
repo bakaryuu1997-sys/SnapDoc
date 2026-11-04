@@ -12,7 +12,9 @@ export type Tool =
   | "highlight"
   | "blur"
   | "crop"
-  | "background";
+  | "background"
+  | "badge"
+  | "code-block";
 
 interface Base {
   id: string;
@@ -147,7 +149,39 @@ export type Annotation =
   | NumberedRectAnn
   | HighlightAnn
   | BlurAnn
-  | ImageAnn;
+  | ImageAnn
+  | BadgeAnn
+  | CodeBlockAnn;
+
+export type CodeLanguage = "typescript" | "javascript" | "rust" | "python" | "sql" | "json";
+
+export interface CodeBlockAnn extends Base {
+  type: "code-block";
+  code: string;
+  language: CodeLanguage;
+  width: number;
+  height: number;
+  fontSize: number;
+  title?: string;
+}
+
+export type BadgeVariant = "confidential" | "approved" | "in_progress" | "blocker";
+
+export interface BadgeAnn extends Base {
+  type: "badge";
+  variant: BadgeVariant;
+  text: string;
+  width: number;
+  height: number;
+  rotation?: number;
+}
+
+export const BADGE_PRESETS: Record<BadgeVariant, { text: string; color: string; label: string }> = {
+  confidential: { text: "CONFIDENTIAL", color: "#ef4444", label: "🔴 CONFIDENTIAL" },
+  approved: { text: "APPROVED", color: "#10b981", label: "🟢 APPROVED" },
+  in_progress: { text: "IN PROGRESS", color: "#f59e0b", label: "🟡 IN PROGRESS" },
+  blocker: { text: "P0 BLOCKER", color: "#8b5cf6", label: "🟣 P0 BLOCKER" },
+};
 
 /** Cấu hình khung nền gradient / solid (Mockup / Beautifier) */
 export interface BackgroundConfig {
@@ -253,7 +287,7 @@ export const annotationBounds = (a: Annotation): { x1: number; y1: number; x2: n
   let y1 = a.y;
   let x2 = a.x;
   let y2 = a.y;
-  if (a.type === "rect" || a.type === "ellipse" || a.type === "highlight" || a.type === "blur" || a.type === "numbered-rect" || a.type === "image") {
+  if (a.type === "rect" || a.type === "ellipse" || a.type === "highlight" || a.type === "blur" || a.type === "numbered-rect" || a.type === "image" || a.type === "code-block") {
     x2 = a.x + a.width;
     y2 = a.y + a.height;
   } else if (a.type === "arrow" || a.type === "double-arrow" || a.type === "line" || a.type === "numbered-arrow") {

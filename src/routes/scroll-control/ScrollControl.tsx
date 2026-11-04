@@ -70,6 +70,16 @@ export default function ScrollControl() {
   // Mất dấu nối (hiện nút "nối tiếp" để bỏ qua khoảng trống)
   const [lostTracking, setLostTracking] = useState(false);
 
+  // Chế độ Tự động cuộn thông minh (Smart Auto-Scroll)
+  const [autoScroll, setAutoScroll] = useState(false);
+  const [autoSpeed, setAutoSpeed] = useState<"slow" | "normal" | "fast">("normal");
+  const [autoFinished, setAutoFinished] = useState(false);
+  const idleCountRef = useRef(0);
+  const autoScrollRef = useRef(false);
+  autoScrollRef.current = autoScroll;
+  const autoSpeedRef = useRef(autoSpeed);
+  autoSpeedRef.current = autoSpeed;
+
   // Chẩn đoán hiển thị ngay trên panel
   const [dbg, setDbg] = useState<string>("");
   const [logText, setLogText] = useState<string>("");
@@ -281,14 +291,33 @@ export default function ScrollControl() {
         case ST_REANCHORED:
           setFastWarn(false);
           setLostTracking(false);
+          idleCountRef.current = 0;
           break;
         case ST_IDLE:
           setFastWarn(false);
+          if (autoScrollRef.current) {
+            idleCountRef.current++;
+            if (idleCountRef.current >= 4) {
+              setAutoScroll(false);
+              setAutoFinished(true);
+            }
+          }
           break;
         case ST_LOST:
           setLostTracking(true);
           setFastWarn((tk.flags & FLAG_FAST) !== 0);
+          if (autoScrollRef.current) {
+            setAutoScroll(false);
+          }
           break;
+      }
+
+      if (autoScrollRef.current && tk.status !== ST_LOST) {
+        const speed = autoSpeedRef.current;
+        const steps = speed === "fast" ? 3 : speed === "normal" ? 2 : 1;
+        const targetX = Math.round(rx + rw / 2);
+        const targetY = Math.round(ry + rh / 2);
+        await ipc.scrollSendWheel(steps, targetX, targetY).catch(() => {});
       }
     } catch (err) {
       console.error(t("scroll.captureSliceError"), err);
@@ -298,11 +327,16 @@ export default function ScrollControl() {
 
   const scheduleNext = () => {
     if (!isCapturingRef.current) return;
+    const speed = autoSpeedRef.current;
+    const gap = autoScrollRef.current
+      ? (speed === "fast" ? 90 : speed === "normal" ? 140 : 200)
+      : TICK_GAP_MS;
+
     timerRef.current = window.setTimeout(async () => {
       timerRef.current = null;
       await runExclusive(captureTick);
       scheduleNext();
-    }, TICK_GAP_MS);
+    }, gap);
   };
 
   const startCapture = async () => {
@@ -460,7 +494,7 @@ export default function ScrollControl() {
                 onClick={async () => {
                   const text = logRef.current.join("\n");
                   try {
-                    await navigator.clipboard.writeText(text);
+                    await ipc.copyText(text).catch(async () => { await navigator.clipboard.writeText(text).catch(() => {}); });
                   } catch {
                     /* fallback: bôi đen ô bên dưới rồi Ctrl/Cmd+C */
                   }
@@ -541,6 +575,86 @@ export default function ScrollControl() {
           </div>
         )}
       </div>
+
+      {/* Auto-Scroll Bar */}
+      {status === "capturing" && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "6px 12px",
+          background: autoScroll ? "rgba(99, 102, 241, 0.15)" : "rgba(255, 255, 255, 0.04)",
+          border: autoScroll ? "1px solid rgba(99, 102, 241, 0.4)" : "1px solid rgba(255, 255, 255, 0.06)",
+          borderRadius: 8,
+          margin: "0 0 10px 0",
+          transition: "all 0.2s ease",
+        }}>
+          <button
+            type="button"
+            onClick={() => {
+              setAutoFinished(false);
+              idleCountRef.current = 0;
+              setAutoScroll((v) => !v);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              background: autoScroll ? "#6366f1" : "rgba(255, 255, 255, 0.08)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: autoScroll ? "0 0 12px rgba(99, 102, 241, 0.5)" : "none",
+            }}
+          >
+            <span>{autoScroll ? "⏸ Dừng cuộn" : "⚡ Tự động cuộn"}</span>
+          </button>
+
+          {/* Speed Presets */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "rgba(255, 255, 255, 0.45)" }}>Tốc độ:</span>
+            {(["slow", "normal", "fast"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setAutoSpeed(s)}
+                style={{
+                  background: autoSpeed === s ? "rgba(255, 255, 255, 0.18)" : "transparent",
+                  color: autoSpeed === s ? "#fff" : "rgba(255, 255, 255, 0.6)",
+                  border: "none",
+                  borderRadius: 4,
+                  padding: "2px 6px",
+                  fontSize: 11,
+                  fontWeight: autoSpeed === s ? 700 : 400,
+                  cursor: "pointer",
+                }}
+              >
+                {s === "slow" ? "1x" : s === "normal" ? "2x" : "3x"}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {autoFinished && (
+        <div style={{
+          background: "rgba(16, 185, 129, 0.15)",
+          border: "1px solid rgba(16, 185, 129, 0.35)",
+          color: "#34d399",
+          padding: "6px 10px",
+          borderRadius: 6,
+          fontSize: 11,
+          fontWeight: 600,
+          textAlign: "center",
+          marginBottom: 10,
+        }}>
+          ✓ Đã cuộn đến cuối trang! Bấm Hoàn tất để lưu ảnh ghép.
+        </div>
+      )}
 
       {error && <div style={errorBox}>{error}</div>}
 

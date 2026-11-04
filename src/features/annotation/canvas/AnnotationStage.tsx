@@ -11,11 +11,14 @@ import { Stage, Layer, Rect, Line, Ellipse, Text, Circle, Group, Image as KImage
 import type Konva from "konva";
 import { useTranslation } from "react-i18next";
 import { useEditor, EDIT_TOOLS } from "../store";
-import type { Annotation, ArrowAnn, DoubleArrowAnn, LineAnn, NumberedArrowAnn, TextAnn } from "../model";
-import { annotationBounds, translateAnnotation, uid, TEXT_BG_PRESETS } from "../model";
+import type { Annotation, ArrowAnn, DoubleArrowAnn, LineAnn, NumberedArrowAnn, TextAnn, CodeBlockAnn } from "../model";
+import { tokenizeCode, CODE_THEME, CODE_LANGUAGES } from "../../../lib/codeHighlighter";
+import { annotationBounds, translateAnnotation, uid, TEXT_BG_PRESETS, BADGE_PRESETS } from "../model";
 import { copyToClipboard } from "../../output/useOutput";
 import { toSafeBlobUrl } from "../../../lib/blobUtils";
 import { getCachedImage, setCachedImage, imageAnnCache } from "./imageCache";
+import LiveTextOverlay from "./LiveTextOverlay";
+import type { OcrResult, OcrWord } from "../../../lib/ipc";
 
 export interface StageHandle {
   exportPng: () => string | null;
@@ -60,6 +63,12 @@ interface AnnotationStageProps {
   /** Ẩn thanh zoom (Fit/100%/±) — dùng cho "Chụp nhanh". Mặc định hiện. */
   hideZoomBar?: boolean;
   onFlash?: (msg: string) => void;
+  ocrResult?: OcrResult | null;
+  liveTextEnabled?: boolean;
+  onToggleLiveText?: () => void;
+  onOpenOcrModal?: () => void;
+  onCopyLiveText?: (text: string) => void;
+  onRedactWords?: (words: OcrWord[]) => void;
 }
 
 /** Khung viền chọn từng đối tượng khi chọn nhiều */
@@ -447,7 +456,16 @@ function drawRoundedRect(
  */
 const toSafeImageUrl = (src: string) => toSafeBlobUrl(src, 500_000);
 
-const AnnotationStage = forwardRef<StageHandle, AnnotationStageProps>(({ hideZoomBar, onFlash }, ref) => {
+const AnnotationStage = forwardRef<StageHandle, AnnotationStageProps>(({
+  hideZoomBar,
+  onFlash,
+  ocrResult,
+  liveTextEnabled = false,
+  onToggleLiveText,
+  onOpenOcrModal,
+  onCopyLiveText,
+  onRedactWords,
+}, ref) => {
   const { t } = useTranslation();
   const doc = useEditor((s) => s.doc);
   const tool = useEditor((s) => s.tool);
@@ -1507,6 +1525,50 @@ const AnnotationStage = forwardRef<StageHandle, AnnotationStageProps>(({ hideZoo
       beginArrowDraft(tool, x, y);
       return;
     }
+    if (tool === "badge") {
+      const variant = useEditor.getState().badgeVariant || "confidential";
+      const preset = BADGE_PRESETS[variant];
+      const width = variant === "confidential" ? 150 : variant === "blocker" ? 140 : 120;
+      const height = 38;
+      useEditor.getState().addAnnotation({
+        id: uid(),
+        type: "badge",
+        variant,
+        text: preset.text,
+        x: Math.round(x - width / 2),
+        y: Math.round(y - height / 2),
+        width,
+        height,
+        rotation: -12,
+        color: preset.color,
+        strokeWidth: 2,
+      });
+      return;
+    }
+    if (tool === "code-block") {
+      const lang = useEditor.getState().codeLanguage || "typescript";
+      const preset = CODE_LANGUAGES.find((l) => l.id === lang) || CODE_LANGUAGES[0];
+      const width = 360;
+      const height = 180;
+      const newAnn: CodeBlockAnn = {
+        id: uid(),
+        type: "code-block",
+        x: Math.round(x - width / 2),
+        y: Math.round(y - height / 2),
+        width,
+        height,
+        fontSize: 13,
+        language: lang,
+        title: preset.defaultTitle,
+        code: preset.sample,
+        color: "#cba6f7",
+        strokeWidth: 1,
+      };
+      useEditor.getState().addAnnotation(newAnn);
+      useEditor.getState().select(newAnn.id);
+      useEditor.getState().setTool("select");
+      return;
+    }
     if (tool === "step") {
       const value = useEditor.getState().nextStep();
       useEditor.getState().addAnnotation({
@@ -2099,6 +2161,200 @@ const AnnotationStage = forwardRef<StageHandle, AnnotationStageProps>(({ hideZoo
                     </Group>
                     {isSelected && activeIds.length > 1 && (
                       <SelectionFrame x={a.x} y={a.y} width={a.width} height={a.height} />
+                    )}
+                  </Group>
+                );
+              }
+              if (a.type === "badge") {
+                const rotation = a.rotation ?? -12;
+                return (
+                  <Group
+                    key={a.id}
+                    id={a.id}
+                    x={a.x}
+                    y={a.y}
+                    rotation={rotation}
+                    draggable={dragFor(a)}
+                    onClick={(e) => useEditor.getState().select(a.id, e.evt.shiftKey || e.evt.metaKey || e.evt.ctrlKey)}
+                    onTap={() => useEditor.getState().select(a.id)}
+                    onDragEnd={(e) => onDragEnd(a.id, e)}
+                  >
+                    <Rect
+                      x={0}
+                      y={0}
+                      width={a.width}
+                      height={a.height}
+                      stroke={a.color}
+                      strokeWidth={2.5}
+                      cornerRadius={6}
+                      dash={[6, 3]}
+                      fill={a.color + "18"}
+                      shadowColor={isSelected ? "#3b82f6" : "rgba(0,0,0,0.3)"}
+                      shadowBlur={isSelected ? 8 : 4}
+                      shadowOpacity={0.8}
+                    />
+                    <Rect
+                      x={3}
+                      y={3}
+                      width={a.width - 6}
+                      height={a.height - 6}
+                      stroke={a.color}
+                      strokeWidth={1}
+                      cornerRadius={4}
+                    />
+                    <Text
+                      x={0}
+                      y={0}
+                      width={a.width}
+                      height={a.height}
+                      text={a.text}
+                      fontSize={14}
+                      fontFamily="Impact, Arial Black, sans-serif"
+                      fontStyle="bold"
+                      fill={a.color}
+                      align="center"
+                      verticalAlign="middle"
+                      letterSpacing={1.2}
+                    />
+                    {isSelected && activeIds.length > 1 && (
+                      <SelectionFrame x={0} y={0} width={a.width} height={a.height} />
+                    )}
+                  </Group>
+                );
+              }
+              if (a.type === "code-block") {
+                const codeLines = tokenizeCode(a.code || "", a.language);
+                const fs = a.fontSize || 12;
+                const lineH = Math.round(fs * 1.5);
+                const headerH = 28;
+                const padX = 12;
+                const padY = 10;
+                const lineNumW = 26;
+                const estH = Math.max(a.height, headerH + padY * 2 + codeLines.length * lineH);
+                const estW = Math.max(a.width, 240);
+
+                return (
+                  <Group
+                    key={a.id}
+                    id={a.id}
+                    x={a.x}
+                    y={a.y}
+                    draggable={dragFor(a)}
+                    onClick={(e) => useEditor.getState().select(a.id, e.evt.shiftKey || e.evt.metaKey || e.evt.ctrlKey)}
+                    onDblClick={() => {
+                      const w = Math.max(340, a.width * scale);
+                      const h = Math.max(180, estH * scale);
+                      setTextareaSize({ width: w, height: h });
+                      setEditing({ id: a.id, value: a.code });
+                    }}
+                    onTap={() => useEditor.getState().select(a.id)}
+                    onDblTap={() => {
+                      const w = Math.max(340, a.width * scale);
+                      const h = Math.max(180, estH * scale);
+                      setTextareaSize({ width: w, height: h });
+                      setEditing({ id: a.id, value: a.code });
+                    }}
+                    onDragEnd={(e) => onDragEnd(a.id, e)}
+                    onTransformEnd={(e) => onTransformEnd(a, e.target)}
+                  >
+                    <Rect
+                      x={0}
+                      y={0}
+                      width={estW}
+                      height={estH}
+                      fill={CODE_THEME.bg}
+                      stroke={isSelected ? "#3b82f6" : CODE_THEME.border}
+                      strokeWidth={isSelected ? 2 : 1}
+                      cornerRadius={8}
+                      shadowColor="rgba(0,0,0,0.5)"
+                      shadowBlur={isSelected ? 16 : 8}
+                      shadowOffset={{ x: 0, y: 4 }}
+                      shadowOpacity={0.6}
+                    />
+
+                    <Rect
+                      x={0}
+                      y={0}
+                      width={estW}
+                      height={headerH}
+                      fill={CODE_THEME.titleBg}
+                      cornerRadius={[8, 8, 0, 0]}
+                    />
+                    <Circle x={14} y={headerH / 2} radius={4.5} fill="#ff5f56" />
+                    <Circle x={26} y={headerH / 2} radius={4.5} fill="#ffbd2e" />
+                    <Circle x={38} y={headerH / 2} radius={4.5} fill="#27c93f" />
+
+                    <Text
+                      x={50}
+                      y={0}
+                      width={estW - 100}
+                      height={headerH}
+                      text={a.title || a.language.toUpperCase()}
+                      fontSize={11}
+                      fontFamily="'Fira Code', Consolas, monospace"
+                      fill="#a6adc8"
+                      verticalAlign="middle"
+                    />
+
+                    <Rect
+                      x={estW - 48}
+                      y={5}
+                      width={40}
+                      height={18}
+                      fill="#313244"
+                      cornerRadius={4}
+                    />
+                    <Text
+                      x={estW - 48}
+                      y={5}
+                      width={40}
+                      height={18}
+                      text={a.language.slice(0, 4).toUpperCase()}
+                      fontSize={9}
+                      fontStyle="bold"
+                      fontFamily="sans-serif"
+                      fill="#cba6f7"
+                      align="center"
+                      verticalAlign="middle"
+                    />
+
+                    {codeLines.map((lineTokens, lineIdx) => {
+                      const lineY = headerH + padY + lineIdx * lineH;
+                      let tokenCursorX = padX + lineNumW;
+                      return (
+                        <Group key={lineIdx} y={lineY}>
+                          <Text
+                            x={padX}
+                            y={0}
+                            width={lineNumW - 6}
+                            text={String(lineIdx + 1)}
+                            fontSize={fs * 0.9}
+                            fontFamily="'Fira Code', Consolas, monospace"
+                            fill={CODE_THEME.lineNumber}
+                            align="right"
+                          />
+                          {lineTokens.map((token, tokenIdx) => {
+                            const tx = tokenCursorX;
+                            tokenCursorX += token.text.length * (fs * 0.62);
+                            return (
+                              <Text
+                                key={tokenIdx}
+                                x={tx}
+                                y={0}
+                                text={token.text}
+                                fontSize={fs}
+                                fontFamily="'Fira Code', Consolas, 'Courier New', monospace"
+                                fontStyle={token.bold ? "bold" : token.italic ? "italic" : "normal"}
+                                fill={token.color}
+                              />
+                            );
+                          })}
+                        </Group>
+                      );
+                    })}
+
+                    {isSelected && activeIds.length > 1 && (
+                      <SelectionFrame x={0} y={0} width={estW} height={estH} />
                     )}
                   </Group>
                 );
@@ -2961,6 +3217,27 @@ const AnnotationStage = forwardRef<StageHandle, AnnotationStageProps>(({ hideZoo
           </Layer>
         </Stage>
 
+        {/* Live Text Overlay — bôi đen và copy chữ trực tiếp trên ảnh */}
+        {ocrResult && ocrResult.words.length > 0 && (
+          <LiveTextOverlay
+            words={ocrResult.words}
+            lines={ocrResult.lines}
+            scale={scale}
+            offsetX={bgPad * scale}
+            offsetY={bgPad * scale}
+            imgW={doc.imgW}
+            imgH={doc.imgH}
+            enabled={liveTextEnabled && tool === "select"}
+            engine={ocrResult.engine}
+            engineError={ocrResult.engineError}
+            onCopyText={onCopyLiveText}
+            onRedactWords={onRedactWords}
+            onFlash={onFlash}
+            onClose={onToggleLiveText}
+            onOpenInspector={onOpenOcrModal}
+          />
+        )}
+
         {editing && (() => {
           const activeAnn = doc?.annotations.find((x) => x.id === editing.id);
           const textAnn = activeAnn?.type === "text" ? (activeAnn as TextAnn) : null;
@@ -3193,6 +3470,38 @@ const AnnotationStage = forwardRef<StageHandle, AnnotationStageProps>(({ hideZoo
           <line x1="9.5" y1="9.5" x2="12.5" y2="12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
         </svg>
       </button>
+
+      {/* OCR & Live Text Controls */}
+      {ocrResult && ocrResult.words.length > 0 && (
+        <>
+          <span style={{ width: 1, height: 16, background: "rgba(255,255,255,0.12)", margin: "0 2px" }} />
+          <button
+            onClick={onToggleLiveText}
+            style={{
+              ...zoomChip,
+              ...(liveTextEnabled ? {
+                background: "rgba(59, 130, 246, 0.25)",
+                color: "#93c5fd",
+                border: "1px solid rgba(59, 130, 246, 0.45)",
+              } : null),
+            }}
+            title="Bật/Tắt chế độ bôi đen & copy chữ trực tiếp trên ảnh (Live Text)"
+          >
+            <span style={{ fontSize: 12 }}>📑</span>
+            Live Text {liveTextEnabled ? "Bật" : "Tắt"}
+          </button>
+          {onOpenOcrModal && (
+            <button
+              onClick={onOpenOcrModal}
+              style={zoomChip}
+              title="Mở khung xem & chỉnh sửa toàn bộ văn bản OCR"
+            >
+              <span>🔍</span>
+              Xem văn bản ({ocrResult.words.length})
+            </button>
+          )}
+        </>
+      )}
     </div>
     )}
     </div>
