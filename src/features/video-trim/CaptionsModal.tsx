@@ -13,6 +13,7 @@ import { dirnameOf, promptSaveVideoPath } from "../output/useOutput";
 import type { Segment } from "./segments";
 import type { VideoCrop, VideoOverlayItem, ZoomSegment } from "./types";
 import { mapCaptionsToTimeline } from "./captionUtils";
+import { clearCaptionsError, fmtElapsed, useCaptionsJobs } from "./captionsJobs";
 
 /** Các tham số y hệt "Lưu thành video mới" dùng để dựng bản đã chỉnh sửa. */
 export interface CaptionEditPayload {
@@ -48,7 +49,9 @@ export interface CaptionsModalProps {
   onFlash?: (msg: string) => void;
 }
 
-type Job = null | "setup" | "transcribe" | "export";
+/** Chỉ xuất video còn chạy "trong" hộp thoại (nó cần các tham số chỉnh sửa hiện tại);
+ * tải model và nhận diện giọng nói chạy NỀN, không gắn với hộp thoại. */
+type Job = null | "export";
 
 const LANGS: { code: string; label: string }[] = [
   { code: "auto", label: "Tự nhận diện" },
@@ -128,13 +131,17 @@ export default function CaptionsModal({
     [t],
   );
 
+  const jobs = useCaptionsJobs();
   const [status, setStatus] = useState<CaptionsStatus | null>(null);
   const [modelId, setModelId] = useState<string>(() => readLS(MODEL_KEY) ?? "small");
+  /** Các model được tick để tải (có thể tải nhiều model cùng lúc, lần lượt ở nền). */
+  const [dlSel, setDlSel] = useState<string[]>(["small"]);
   const [spoken, setSpoken] = useState<string>(() => readLS(LANG_KEY) ?? "auto");
   const [matchEdits, setMatchEdits] = useState(true);
   const [job, setJob] = useState<Job>(null);
-  const [progress, setProgress] = useState<CaptionsProgress | null>(null);
+  const [exportProgress, setExportProgress] = useState<CaptionsProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [, tick] = useState(0);
 
   const refreshStatus = useCallback(() => {
     ipc
@@ -146,6 +153,12 @@ export default function CaptionsModal({
           const firstInstalled = MODEL_ORDER.find((id) => s.models.find((m) => m.id === id)?.installed);
           return firstInstalled ?? cur;
         });
+        // Model đã cài thì không còn nằm trong danh sách "cần tải".
+        // Chưa cài model nào mà danh sách chọn trống → chọn lại model khuyên dùng.
+        setDlSel((sel) => {
+          const left = sel.filter((id) => !s.models.find((m) => m.id === id)?.installed);
+          return left.length === 0 && !s.models.some((m) => m.installed) ? ["small"] : left;
+        });
       })
       .catch((e) => setError(String(e)));
   }, []);
@@ -156,6 +169,20 @@ export default function CaptionsModal({
     refreshStatus();
   }, [open, refreshStatus]);
 
+  // Có tác vụ nền kết thúc (tải xong 1 lượt model…) → nạp lại model nào đã cài.
+  useEffect(() => {
+    if (open) refreshStatus();
+  }, [open, jobs.finishedSeq, refreshStatus]);
+
+  // Đồng hồ "đã chạy …" cập nhật mỗi giây khi có tác vụ nền.
+  const hasBg = !!(jobs.transcribe || jobs.download);
+  useEffect(() => {
+    if (!open || !hasBg) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [open, hasBg]);
+
+  // Tiến độ xuất video (chạy trong hộp thoại) — tải model/nhận diện do store nền lo.
   useEffect(() => {
     if (!open) return;
     let disposed = false;
@@ -165,11 +192,24 @@ export default function CaptionsModal({
         if (disposed) fn();
         else unlistens.push(fn);
       });
-    track(listen<CaptionsProgress>("captions-progress", (e) => setProgress(e.payload)));
+    track(
+      listen<CaptionsProgress>("captions-progress", (e) => {
+        if (e.payload.job === "export") setExportProgress(e.payload);
+      }),
+    );
     // Tiến độ bước "áp dụng chỉnh sửa" (cắt/tốc độ/overlay) trước khi ghi phụ đề.
     track(
       listen<number>("trim-progress", (e) =>
-        setProgress({ stage: "edit", percent: Math.round(Math.min(1, Math.max(0, e.payload)) * 100), doneBytes: 0, totalBytes: 0 }),
+        setExportProgress({
+          job: "export",
+          stage: "edit",
+          percent: Math.round(Math.min(1, Math.max(0, e.payload)) * 100),
+          doneBytes: 0,
+          totalBytes: 0,
+          index: 0,
+          count: 0,
+          startedMs: 0,
+        }),
       ),
     );
     return () => {
@@ -178,23 +218,30 @@ export default function CaptionsModal({
     };
   }, [open]);
 
+  const exporting = job === "export";
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && job === null) onClose();
+      if (e.key === "Escape" && !exporting) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, job, onClose]);
+  }, [open, exporting, onClose]);
 
   const modelInstalled = !!status?.models.find((m) => m.id === modelId)?.installed;
   const ready = !!status?.engineInstalled && modelInstalled;
-  const busy = job !== null;
+  const transcribing = !!jobs.transcribe;
+  const transcribingOther = !!jobs.transcribe && jobs.transcribe.videoPath !== filePath;
+  const downloading = !!jobs.download;
   const hasCaptions = segments.length > 0;
+  /** Khoá thao tác ghi đè dữ liệu phụ đề chỉ khi đang xuất video (nhận diện/tải chạy nền, không khoá). */
+  const busy = exporting;
+  const transcribeError = jobs.transcribeError && jobs.transcribeError.videoPath === filePath ? jobs.transcribeError.message : null;
 
   const run = async (kind: Exclude<Job, null>, fn: () => Promise<void>) => {
     setJob(kind);
-    setProgress(null);
+    setExportProgress(null);
     setError(null);
     try {
       await fn();
@@ -203,23 +250,39 @@ export default function CaptionsModal({
       if (!msg.includes("Đã huỷ")) setError(msg);
     } finally {
       setJob(null);
-      setProgress(null);
+      setExportProgress(null);
       refreshStatus();
     }
   };
 
-  const doInstall = () =>
-    run("setup", async () => {
-      await ipc.captionsSetup(modelId);
-    });
+  const doInstall = async () => {
+    setError(null);
+    clearCaptionsError("download");
+    try {
+      // Tải ở nền, lần lượt từng model đã chọn; hộp thoại có thể đóng ngay.
+      await ipc.captionsSetup(dlSel);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
-  const doGenerate = () =>
-    run("transcribe", async () => {
-      writeLS(LANG_KEY, spoken);
-      writeLS(MODEL_KEY, modelId);
-      const res = await ipc.captionsTranscribe(filePath, spoken, modelId);
-      onChange(res.segments, res.language);
-    });
+  const toggleDl = (id: string) =>
+    setDlSel((sel) => (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]));
+
+  const doGenerate = async () => {
+    setError(null);
+    clearCaptionsError("transcribe");
+    writeLS(LANG_KEY, spoken);
+    writeLS(MODEL_KEY, modelId);
+    try {
+      // Chạy NỀN: trả về ngay → thu nhỏ thành popup tiến độ để người dùng làm việc khác.
+      await ipc.captionsTranscribeStart(filePath, spoken, modelId);
+      onFlash?.(tt("startedBg", "Đang tạo phụ đề ở nền — bạn cứ tiếp tục chỉnh sửa, xong sẽ có thông báo"));
+      onClose();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   const defaultDir = async (): Promise<string> => {
     const settings = await ipc.getSettings().catch(() => null);
@@ -299,23 +362,12 @@ export default function CaptionsModal({
     });
   };
 
-  const stageText = useMemo(() => {
-    if (!progress) return "";
-    switch (progress.stage) {
-      case "engine":
-        return tt("stageEngine", "Đang tải engine Whisper…");
-      case "model":
-        return tt("stageModel", "Đang tải model…");
-      case "audio":
-        return tt("stageAudio", "Đang tách âm thanh…");
-      case "transcribe":
-        return tt("stageTranscribe", "Đang nhận diện giọng nói…");
-      case "edit":
-        return tt("stageEdit", "Đang áp dụng chỉnh sửa vào video…");
-      default:
-        return tt("stageExport", "Đang xuất video…");
-    }
-  }, [progress, tt]);
+  const exportStageText = useMemo(() => {
+    if (!exportProgress) return "";
+    return exportProgress.stage === "edit"
+      ? tt("stageEdit", "Đang áp dụng chỉnh sửa vào video…")
+      : tt("stageExport", "Đang xuất video…");
+  }, [exportProgress, tt]);
 
   if (!open) return null;
 
@@ -326,6 +378,65 @@ export default function CaptionsModal({
       : id === "small"
         ? tt("modelSmall", "Cân bằng (khuyên dùng)")
         : tt("modelTurbo", "Chính xác nhất");
+
+  const missing = status?.models.filter((m) => !m.installed) ?? [];
+  const dlBytes =
+    (status?.models.filter((m) => dlSel.includes(m.id) && !m.installed).reduce((a, m) => a + m.sizeBytes, 0) ?? 0) +
+    (status && !status.engineInstalled ? status.engineSizeBytes : 0);
+  const dl = jobs.download;
+  const dlText = !dl
+    ? ""
+    : dl.stage === "engine"
+      ? tt("stageEngine", "Đang tải engine Whisper…")
+      : dl.count > 1
+        ? tt("stageModelN", "Đang tải model {{name}} ({{i}}/{{n}})…", { name: modelLabel(dl.modelId ?? ""), i: dl.index, n: dl.count })
+        : tt("stageModelOne", "Đang tải model {{name}}…", { name: modelLabel(dl.modelId ?? "") });
+  const tr = jobs.transcribe;
+
+  /** Danh sách model: tick nhiều model để tải cùng lúc (lần lượt ở nền). */
+  const modelPicker = status && (
+    <div style={sectionStyle}>
+      <div style={modelListStyle}>
+        {status.models.map((m) => {
+          const checked = m.installed || dlSel.includes(m.id);
+          return (
+            <label
+              key={m.id}
+              style={{ ...modelRowStyle, ...(modelId === m.id && m.installed ? modelRowActive : null), cursor: m.installed || downloading ? "default" : "pointer" }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={m.installed || downloading}
+                onChange={() => toggleDl(m.id)}
+              />
+              <span style={{ flex: 1 }}>{modelLabel(m.id)}</span>
+              <span style={sizeStyle}>
+                {m.installed ? "✓ " + tt("installed", "đã cài") : fmtMB(m.sizeBytes)}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {missing.length > 1 && !downloading && (
+        <button
+          style={ghostBtn}
+          onClick={() => setDlSel(missing.map((m) => m.id))}
+          disabled={dlSel.length === missing.length}
+        >
+          {tt("selectAll", "Chọn tất cả model chưa cài")}
+        </button>
+      )}
+      <button style={primaryBtn} disabled={downloading || dlSel.length === 0 && !!status.engineInstalled} onClick={doInstall}>
+        {downloading
+          ? tt("installing", "Đang tải…")
+          : tt("installN", "Tải về & cài đặt ({{n}} model · {{size}})", {
+              n: dlSel.length,
+              size: fmtMB(dlBytes),
+            })}
+      </button>
+    </div>
+  );
 
   return (
     <div style={overlayStyle} onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -350,82 +461,127 @@ export default function CaptionsModal({
               <div style={labelStyle}>{tt("setupTitle", "Cài đặt lần đầu")}</div>
               <div style={hintStyle}>
                 {tt(
-                  "setupDesc",
-                  "Cần tải engine Whisper ({{engine}}) và 1 model nhận diện giọng nói. Tệp tải từ github.com/ggml-org/whisper.cpp và huggingface.co/ggerganov/whisper.cpp, được kiểm tra SHA-256 trước khi dùng.",
+                  "setupDescMulti",
+                  "Cần tải engine Whisper ({{engine}}) và ít nhất 1 model nhận diện giọng nói — có thể tick nhiều model để tải một lượt (tải ở nền, đóng hộp thoại vẫn tiếp tục, bị ngắt sẽ tải tiếp). Tệp tải từ github.com/ggml-org/whisper.cpp và huggingface.co/ggerganov/whisper.cpp, được kiểm tra SHA-256 trước khi dùng.",
                   { engine: fmtMB(status.engineSizeBytes) },
                 )}
               </div>
-              <div style={modelListStyle}>
-                {status.models.map((m) => (
-                  <label key={m.id} style={{ ...modelRowStyle, ...(modelId === m.id ? modelRowActive : null) }}>
-                    <input
-                      type="radio"
-                      name="captions-model"
-                      checked={modelId === m.id}
-                      disabled={busy}
-                      onChange={() => setModelId(m.id)}
-                    />
-                    <span style={{ flex: 1 }}>{modelLabel(m.id)}</span>
-                    <span style={sizeStyle}>
-                      {m.installed ? "✓ " + tt("installed", "đã cài") : fmtMB(m.sizeBytes)}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <button style={primaryBtn} disabled={busy} onClick={doInstall}>
-                {job === "setup" ? tt("installing", "Đang tải…") : tt("install", "Tải về & cài đặt")}
-              </button>
+              {modelPicker}
             </div>
           )}
 
           {!unsupported && status && ready && (
-            <div style={rowStyle}>
-              <div style={{ flex: 1 }}>
-                <div style={labelStyle}>{tt("language", "Ngôn ngữ trong video")}</div>
-                <select style={selectStyle} value={spoken} disabled={busy} onChange={(e) => setSpoken(e.target.value)}>
-                  {LANGS.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.code === "auto" ? tt("langAuto", l.label) : l.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={labelStyle}>{tt("model", "Model")}</div>
-                <select style={selectStyle} value={modelId} disabled={busy} onChange={(e) => setModelId(e.target.value)}>
-                  {status.models
-                    .filter((m) => m.installed)
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {modelLabel(m.id)}
+            <>
+              <div style={rowStyle}>
+                <div style={{ flex: 1 }}>
+                  <div style={labelStyle}>{tt("language", "Ngôn ngữ trong video")}</div>
+                  <select style={selectStyle} value={spoken} disabled={busy} onChange={(e) => setSpoken(e.target.value)}>
+                    {LANGS.map((l) => (
+                      <option key={l.code} value={l.code}>
+                        {l.code === "auto" ? tt("langAuto", l.label) : l.label}
                       </option>
                     ))}
-                </select>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={labelStyle}>{tt("model", "Model")}</div>
+                  <select style={selectStyle} value={modelId} disabled={busy} onChange={(e) => setModelId(e.target.value)}>
+                    {status.models
+                      .filter((m) => m.installed)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {modelLabel(m.id)}
+                        </option>
+                      ))}
+                  </select>
+                </div>
               </div>
+              {(missing.length > 0 || downloading) && (
+                <details style={detailsStyle} open={downloading}>
+                  <summary style={summaryStyle}>
+                    {tt("moreModels", "Tải thêm model ({{n}} chưa cài)", { n: missing.length })}
+                  </summary>
+                  {modelPicker}
+                </details>
+              )}
+            </>
+          )}
+
+          {downloading && dl && (
+            <div style={sectionStyle}>
+              <div style={progressTextStyle}>
+                <span>{dlText}</span>
+                <span>
+                  {dl.percent}%{dl.startedMs > 0 ? ` · ${fmtElapsed(Date.now() - dl.startedMs)}` : ""}
+                </span>
+              </div>
+              <div style={trackStyle}>
+                <div style={{ ...barStyle, width: `${dl.percent}%` }} />
+              </div>
+              <div style={noteStyle}>
+                {tt("bgHint", "Chạy nền — bạn có thể đóng hộp thoại này và tiếp tục làm việc.")}
+              </div>
+              <button style={ghostBtn} onClick={() => ipc.captionsCancel("download").catch(() => {})}>
+                {tt("cancel", "Huỷ")}
+              </button>
             </div>
           )}
 
-          {busy && (
+          {transcribing && tr && (
             <div style={sectionStyle}>
               <div style={progressTextStyle}>
-                <span>{stageText || tt("working", "Đang xử lý…")}</span>
-                {progress && progress.stage !== "audio" && <span>{progress.percent}%</span>}
+                <span>
+                  {tr.stage === "audio"
+                    ? tt("stageAudio", "Đang tách âm thanh…")
+                    : tt("stageTranscribe", "Đang nhận diện giọng nói…")}
+                  {transcribingOther ? ` (${tr.videoPath?.replace(/^.*[\\/]/, "") ?? ""})` : ""}
+                </span>
+                <span>
+                  {tr.stage !== "audio" ? `${tr.percent}%` : ""}
+                  {tr.startedMs > 0 ? ` · ${fmtElapsed(Date.now() - tr.startedMs)}` : ""}
+                </span>
               </div>
               <div style={trackStyle}>
-                <div style={{ ...barStyle, width: `${progress?.percent ?? 0}%` }} />
+                <div style={{ ...barStyle, width: `${tr.stage === "audio" ? 4 : tr.percent}%` }} />
               </div>
-              <button style={ghostBtn} onClick={() => ipc.captionsCancel().catch(() => {})}>
+              <div style={noteStyle}>
+                {tt("bgHint", "Chạy nền — bạn có thể đóng hộp thoại này và tiếp tục làm việc.")}
+              </div>
+              <button style={ghostBtn} onClick={() => ipc.captionsCancel("transcribe").catch(() => {})}>
+                {tt("cancel", "Huỷ")}
+              </button>
+            </div>
+          )}
+
+          {exporting && (
+            <div style={sectionStyle}>
+              <div style={progressTextStyle}>
+                <span>{exportStageText || tt("working", "Đang xử lý…")}</span>
+                {exportProgress && <span>{exportProgress.percent}%</span>}
+              </div>
+              <div style={trackStyle}>
+                <div style={{ ...barStyle, width: `${exportProgress?.percent ?? 0}%` }} />
+              </div>
+              <button style={ghostBtn} onClick={() => ipc.captionsCancel("export").catch(() => {})}>
                 {tt("cancel", "Huỷ")}
               </button>
             </div>
           )}
 
           {error && <div style={errBox}>⚠ {error}</div>}
+          {jobs.downloadError && <div style={errBox}>⚠ {jobs.downloadError}</div>}
+          {transcribeError && <div style={errBox}>⚠ {transcribeError}</div>}
 
           {!unsupported && ready && (
             <>
-              <button style={primaryBtn} disabled={busy} onClick={doGenerate}>
-                {hasCaptions ? tt("regenerate", "Tạo lại phụ đề") : tt("generate", "Tạo phụ đề")}
+              <button style={primaryBtn} disabled={busy || transcribing} onClick={doGenerate}>
+                {transcribing
+                  ? transcribingOther
+                    ? tt("busyOther", "Đang tạo phụ đề cho video khác…")
+                    : tt("generating", "Đang tạo phụ đề…")
+                  : hasCaptions
+                    ? tt("regenerate", "Tạo lại phụ đề")
+                    : tt("generate", "Tạo phụ đề")}
               </button>
 
               {hasCaptions && (
@@ -593,6 +749,13 @@ const rowStyle: React.CSSProperties = { display: "flex", gap: 12 };
 const labelStyle: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "#b4b4be", marginBottom: 4 };
 const hintStyle: React.CSSProperties = { fontSize: 12, color: "#9a9aa6", lineHeight: 1.55 };
 
+const detailsStyle: React.CSSProperties = {
+  border: "1px solid #282830",
+  borderRadius: 8,
+  padding: "8px 10px",
+  background: "#141418",
+};
+const summaryStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: "#b4b4be", cursor: "pointer", marginBottom: 8 };
 const modelListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 6 };
 const modelRowStyle: React.CSSProperties = {
   display: "flex",

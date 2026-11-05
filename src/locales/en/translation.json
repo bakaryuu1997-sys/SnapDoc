@@ -725,6 +725,26 @@
     "needHistory": "This video is not in the Library, so it cannot be exported with edits — save the edited video first.",
     "savedEditedVideo": "Edited video with captions exported",
     "stageEdit": "Applying edits to the video…",
-    "editedExportHint": "This video has edits: exporting applies the current edits (cuts, speed, zoom, crop, annotations) and then burns captions onto that result; caption timing is matched automatically."
+    "editedExportHint": "This video has edits: exporting applies the current edits (cuts, speed, zoom, crop, annotations) and then burns captions onto that result; caption timing is matched automatically.",
+    "setupDescMulti": "Needs the Whisper engine ({{engine}}) and at least one speech model — tick several models to download them in one go (runs in the background; closing this dialog keeps going, and an interrupted download resumes). Files come from github.com/ggml-org/whisper.cpp and huggingface.co/ggerganov/whisper.cpp and are verified with SHA-256 before use.",
+    "installN": "Download & install ({{n}} models · {{size}})",
+    "selectAll": "Select all models not installed",
+    "moreModels": "Download more models ({{n}} not installed)",
+    "stageModelN": "Downloading model {{name}} ({{i}}/{{n}})…",
+    "stageModelOne": "Downloading model {{name}}…",
+    "bgHint": "Running in the background — you can close this dialog and keep working.",
+    "startedBg": "Generating captions in the background — keep editing, you'll be notified when it's done",
+    "doneFlash": "Captions are ready — shown on the player now",
+    "generating": "Generating captions…",
+    "busyOther": "Generating captions for another video…",
+    "chipEngine": "Downloading Whisper engine…",
+    "chipModel": "Downloading model {{name}}",
+    "chipModelN": "Downloading model {{name}} ({{i}}/{{n}})",
+    "chipAudio": "Extracting audio…",
+    "chipTranscribe": "Generating captions…",
+    "chipOpen": "Open captions",
+    "modelBaseShort": "Fast",
+    "modelSmallShort": "Balanced",
+    "modelTurboShort": "Most accurate"
   }
 }

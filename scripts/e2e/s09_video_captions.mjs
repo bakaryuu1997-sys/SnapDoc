@@ -28,6 +28,9 @@ let txt = await ed.text();
 add("ST-09c", "Hộp thoại phụ đề: lần đầu hiện màn hình cài đặt (3 model, dung lượng)", /Cài đặt lần đầu/.test(txt) && /MB/.test(txt) && /Nhanh/.test(txt), (txt.match(/\d+ MB/g) || []).join(", "));
 
 // ── Cài engine + model Nhanh (thật, ~68 MB) ──
+// Mặc định tick sẵn "Cân bằng": bỏ tick nó, chỉ tick "Nhanh" để tải nhẹ (~68 MB).
+await ed.clickText("Cân bằng", "label");
+await sleep(200);
 await ed.clickText("Nhanh", "label");
 await sleep(300);
 await ed.clickText("Tải về & cài đặt");
@@ -52,12 +55,18 @@ await ed.shot("23_captions_ready");
 await ed.eval(`(() => { const s=[...document.querySelectorAll('select')].find(x=>[...x.options].some(o=>o.value==='en')); const set=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set; set.call(s,'en'); s.dispatchEvent(new Event('change',{bubbles:true})); })()`);
 await sleep(300);
 await ed.clickText("Tạo phụ đề");
-let rowsText = [];
-for (let i = 0; i < 90; i++) {
-  await sleep(1500);
-  rowsText = await ed.eval(`[...document.querySelectorAll('input')].filter(i => i.type==='text' && i.value.length>3).map(i => i.value)`);
-  if (rowsText.length > 0) break;
+// Chạy nền: hộp thoại tự đóng, popup tiến độ nhỏ hiện cho tới khi xong.
+let chipSeen = false;
+for (let i = 0; i < 120; i++) {
+  await sleep(1000);
+  const c = await ed.eval(`!!document.querySelector('[data-testid="captions-job-chip"]')`);
+  if (c) chipSeen = true;
+  else if (chipSeen) break;
 }
+await sleep(800);
+await ed.clickSel('button[title="Phụ đề tự động (AI)"]');
+await sleep(900);
+let rowsText = await ed.eval(`[...document.querySelectorAll('input')].filter(i => i.type==='text' && i.value.length>3).map(i => i.value)`);
 await ed.shot("24_captions_generated");
 console.log("Dòng phụ đề:", JSON.stringify(rowsText));
 const joined = rowsText.join(" ").toLowerCase();

@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { ipc, type CaptionSegment, type KeepRange } from "../../lib/ipc";
 import GifExportModal from "./GifExportModal";
 import CaptionsModal, { type CaptionEditPayload } from "./CaptionsModal";
+import CaptionsJobChip from "./CaptionsJobChip";
+import { useCaptionsAutoApply } from "./captionsJobs";
 import {
   CAPTIONS_PREVIEW_KEY,
   activeCaptionAt,
@@ -607,6 +609,18 @@ export default function VideoTrimmer({
     const id = window.setTimeout(() => saveCachedCaptions(filePath, captionLang, captionSegments), 400);
     return () => window.clearTimeout(id);
   }, [filePath, captionLang, captionSegments]);
+
+  // Nhận kết quả nhận diện chạy NỀN ngay khi xong (kể cả lúc hộp thoại đang đóng),
+  // và cả kết quả đã xong từ trước khi Editor này được mở lại.
+  useCaptionsAutoApply(
+    filePath,
+    (segs, lang) => {
+      setCaptionSegments(segs);
+      setCaptionLang(lang);
+      onFlash?.(t("captions.doneFlash", { defaultValue: "Phụ đề đã tạo xong — hiện ngay trên trình phát" }));
+    },
+    (msg) => onFlash?.(msg),
+  );
 
   // Dòng phụ đề đang hiển thị theo vị trí phát THỰC của video (mốc gốc) — nên tự
   // khớp với các đoạn đã cắt/đổi tốc độ vì trình phát vốn bỏ qua đoạn bị cắt.
@@ -3134,6 +3148,8 @@ export default function VideoTrimmer({
         }}
         onFlash={onFlash}
       />
+
+      <CaptionsJobChip currentFilePath={filePath} hidden={captionsOpen} onOpen={() => setCaptionsOpen(true)} />
     </div>
   );
 }

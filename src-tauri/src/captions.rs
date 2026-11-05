@@ -14,12 +14,13 @@
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -106,45 +107,153 @@ pub struct TranscribeResult {
     pub segments: Vec<CaptionSegment>,
 }
 
-#[derive(Serialize, Clone)]
+/// Tiến độ 1 tác vụ nền. Gửi qua sự kiện `captions-progress` và được giữ trong
+/// registry để cửa sổ mở SAU (hoặc mở lại) lấy được bằng `captions_jobs`.
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-struct Progress {
+pub struct Progress {
+    /// "download" | "transcribe" | "export"
+    pub job: &'static str,
     /// "engine" | "model" | "audio" | "transcribe" | "export"
-    stage: &'static str,
-    percent: u32,
-    done_bytes: u64,
-    total_bytes: u64,
+    pub stage: &'static str,
+    pub percent: u32,
+    pub done_bytes: u64,
+    pub total_bytes: u64,
+    /// Video đang được nhận diện (job "transcribe").
+    pub video_path: Option<String>,
+    /// Model đang tải (job "download", stage "model").
+    pub model_id: Option<String>,
+    /// Tải nhiều model: thứ tự model hiện tại (1-based) / tổng số model cần tải.
+    pub index: u32,
+    pub count: u32,
+    /// Lúc tác vụ bắt đầu (ms từ epoch) — để hộp thoại/popup hiện thời gian đã chạy
+    /// đúng kể cả khi cửa sổ được mở sau.
+    pub started_ms: u64,
 }
 
-/* ───────────── Trạng thái tác vụ toàn cục (1 tác vụ tại 1 thời điểm) ───────────── */
+/// Kết quả 1 lần nhận diện, giữ trong bộ nhớ tới khi frontend `captions_take_outcome`
+/// — nhờ vậy đóng hộp thoại / đóng cả cửa sổ Editor giữa chừng vẫn KHÔNG mất kết quả.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscribeOutcome {
+    pub ok: bool,
+    pub error: Option<String>,
+    pub language: String,
+    pub segments: Vec<CaptionSegment>,
+}
 
-static BUSY: AtomicBool = AtomicBool::new(false);
-static CANCEL: AtomicBool = AtomicBool::new(false);
-static ACTIVE_CHILD: Mutex<Option<Child>> = Mutex::new(None);
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Finished {
+    job: &'static str,
+    video_path: Option<String>,
+    ok: bool,
+    cancelled: bool,
+    error: Option<String>,
+}
 
-struct JobGuard;
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobsSnapshot {
+    /// Các tác vụ đang chạy.
+    pub running: Vec<Progress>,
+    /// Video đã có kết quả nhận diện nhưng chưa ai nhận.
+    pub pending: Vec<String>,
+}
+
+#[derive(Default)]
+struct Registry {
+    running: HashMap<&'static str, Progress>,
+    outcomes: HashMap<String, TranscribeOutcome>,
+}
+
+fn registry() -> std::sync::MutexGuard<'static, Registry> {
+    static REG: OnceLock<Mutex<Registry>> = OnceLock::new();
+    REG.get_or_init(|| Mutex::new(Registry::default()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Ngữ cảnh gắn vào mỗi sự kiện tiến độ của 1 tác vụ.
+#[derive(Clone)]
+struct Ctx {
+    job: &'static str,
+    video_path: Option<String>,
+    model_id: Option<String>,
+    index: u32,
+    count: u32,
+    started_ms: u64,
+}
+
+impl Ctx {
+    fn new(job: &'static str) -> Self {
+        let started_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        Ctx { job, video_path: None, model_id: None, index: 0, count: 0, started_ms }
+    }
+}
+
+/* ───────────── Làn tác vụ: tải model / nhận diện / xuất video chạy ĐỘC LẬP ───────────── */
+
+/// Mỗi làn tối đa 1 tác vụ tại 1 thời điểm, nhưng các làn không chặn nhau: đang
+/// nhận diện phụ đề vẫn tải thêm model hoặc xuất video được.
+struct Slot {
+    name: &'static str,
+    busy: AtomicBool,
+    cancel: AtomicBool,
+    child: Mutex<Option<Child>>,
+}
+
+impl Slot {
+    const fn new(name: &'static str) -> Self {
+        Slot {
+            name,
+            busy: AtomicBool::new(false),
+            cancel: AtomicBool::new(false),
+            child: Mutex::new(None),
+        }
+    }
+}
+
+static DOWNLOAD: Slot = Slot::new("download");
+static TRANSCRIBE: Slot = Slot::new("transcribe");
+static EXPORT: Slot = Slot::new("export");
+
+fn slot_by_name(name: &str) -> Option<&'static Slot> {
+    [&DOWNLOAD, &TRANSCRIBE, &EXPORT].into_iter().find(|s| s.name == name)
+}
+
+struct JobGuard(&'static Slot);
 
 impl JobGuard {
-    fn acquire() -> Result<Self, String> {
-        if BUSY
+    fn acquire(slot: &'static Slot) -> Result<Self, String> {
+        if slot
+            .busy
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_err()
         {
-            return Err("Đang có một tác vụ phụ đề khác chạy — hãy đợi xong hoặc huỷ nó.".into());
+            return Err(match slot.name {
+                "download" => "Đang tải engine/model — hãy đợi xong hoặc huỷ.",
+                "transcribe" => "Đang tạo phụ đề cho một video — hãy đợi xong hoặc huỷ.",
+                _ => "Đang xuất video có phụ đề — hãy đợi xong hoặc huỷ.",
+            }
+            .into());
         }
-        CANCEL.store(false, Ordering::SeqCst);
-        Ok(JobGuard)
+        slot.cancel.store(false, Ordering::SeqCst);
+        Ok(JobGuard(slot))
     }
 }
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
-        BUSY.store(false, Ordering::SeqCst);
+        self.0.busy.store(false, Ordering::SeqCst);
     }
 }
 
-fn cancelled() -> bool {
-    CANCEL.load(Ordering::SeqCst)
+fn cancelled(slot: &Slot) -> bool {
+    slot.cancel.load(Ordering::SeqCst)
 }
 
 const CANCELLED_MSG: &str = "Đã huỷ.";
@@ -205,11 +314,24 @@ fn model_ready(dir: &Path, def: &ModelDef) -> bool {
 
 /* ───────────── Tải file có kiểm tra SHA-256 ───────────── */
 
+enum AttemptErr {
+    /// Lỗi tạm thời (mạng đứt, 5xx…) — giữ file `.part` và thử tiếp từ chỗ đã tải.
+    Retry(String),
+    Fatal(String),
+    Cancelled,
+}
+
+const MAX_ATTEMPTS: u32 = 4;
+
+/// Tải `url` về `dest`, kiểm tra SHA-256. TẢI TIẾP được: file `.part` dở dang
+/// (do huỷ / đứt mạng / thoát app) được nối tiếp bằng HTTP `Range` thay vì tải lại
+/// từ đầu — quan trọng với model turbo 574 MB. Tự thử lại tối đa vài lần khi đứt mạng.
 fn download_verified(
     url: &str,
     expect_sha256: &str,
     size_hint: u64,
     dest: &Path,
+    cancel: &AtomicBool,
     mut on_progress: impl FnMut(u64, u64),
 ) -> Result<(), String> {
     if let Some(parent) = dest.parent() {
@@ -220,60 +342,140 @@ fn download_verified(
         .timeout_connect(Duration::from_secs(20))
         .timeout_read(Duration::from_secs(60))
         .build();
-    let resp = agent
-        .get(url)
-        .call()
-        .map_err(|e| format!("Không tải được {url}: {e}"))?;
-    let total = resp
-        .header("Content-Length")
-        .and_then(|v| v.parse::<u64>().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(size_hint);
 
-    let mut reader = resp.into_reader();
-    let mut file = fs::File::create(&tmp).map_err(|e| format!("Không ghi được file tạm: {e}"))?;
-    let mut hasher = Sha256::new();
-    let mut buf = vec![0u8; 256 * 1024];
-    let mut done: u64 = 0;
-    let mut last_emit = Instant::now();
-
-    let result = (|| -> Result<(), String> {
-        loop {
-            if cancelled() {
-                return Err(CANCELLED_MSG.into());
+    let mut last_err = String::new();
+    for attempt in 0..MAX_ATTEMPTS {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(CANCELLED_MSG.into());
+        }
+        match download_attempt(&agent, url, expect_sha256, size_hint, &tmp, cancel, &mut on_progress) {
+            Ok(()) => {
+                let _ = fs::remove_file(dest);
+                return fs::rename(&tmp, dest).map_err(|e| format!("Không lưu được file: {e}"));
             }
-            let n = reader.read(&mut buf).map_err(|e| format!("Lỗi khi tải: {e}"))?;
+            Err(AttemptErr::Cancelled) => return Err(CANCELLED_MSG.into()),
+            Err(AttemptErr::Fatal(e)) => return Err(e),
+            Err(AttemptErr::Retry(e)) => {
+                last_err = e;
+                // Nghỉ một chút (kiểm tra huỷ mỗi 100 ms) rồi nối tiếp từ `.part`.
+                for _ in 0..(10 * (attempt + 1)) {
+                    if cancel.load(Ordering::SeqCst) {
+                        return Err(CANCELLED_MSG.into());
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            }
+        }
+    }
+    Err(format!("{last_err} (đã thử {MAX_ATTEMPTS} lần — lần sau sẽ tải tiếp từ phần đã có)"))
+}
+
+fn download_attempt(
+    agent: &ureq::Agent,
+    url: &str,
+    expect_sha256: &str,
+    size_hint: u64,
+    tmp: &Path,
+    cancel: &AtomicBool,
+    on_progress: &mut impl FnMut(u64, u64),
+) -> Result<(), AttemptErr> {
+    let existing = fs::metadata(tmp).map(|m| m.len()).unwrap_or(0);
+    let mut req = agent.get(url);
+    if existing > 0 {
+        req = req.set("Range", &format!("bytes={existing}-"));
+    }
+    let resp = match req.call() {
+        Ok(r) => r,
+        Err(ureq::Error::Status(416, _)) => {
+            // `.part` không khớp với file trên máy chủ → bỏ, tải lại từ đầu ở lần sau.
+            let _ = fs::remove_file(tmp);
+            return Err(AttemptErr::Retry("Phần đã tải không còn hợp lệ — tải lại từ đầu".into()));
+        }
+        Err(ureq::Error::Status(code, _)) if code >= 500 => {
+            return Err(AttemptErr::Retry(format!("Máy chủ lỗi HTTP {code} khi tải {url}")));
+        }
+        Err(ureq::Error::Status(code, _)) => {
+            return Err(AttemptErr::Fatal(format!("Không tải được {url}: HTTP {code}")));
+        }
+        Err(e) => return Err(AttemptErr::Retry(format!("Không tải được {url}: {e}"))),
+    };
+
+    let resumed = existing > 0 && resp.status() == 206;
+    let mut hasher = Sha256::new();
+    let mut done: u64 = 0;
+    let mut file = if resumed {
+        // Nạp phần đã có vào bộ băm để kiểm tra SHA-256 toàn file ở cuối.
+        let mut old = fs::File::open(tmp).map_err(|e| AttemptErr::Fatal(format!("Không đọc được file tạm: {e}")))?;
+        let mut b = vec![0u8; 256 * 1024];
+        loop {
+            let n = old.read(&mut b).map_err(|e| AttemptErr::Fatal(format!("Không đọc được file tạm: {e}")))?;
             if n == 0 {
                 break;
             }
-            file.write_all(&buf[..n]).map_err(|e| format!("Lỗi ghi file: {e}"))?;
-            hasher.update(&buf[..n]);
+            hasher.update(&b[..n]);
             done += n as u64;
-            if last_emit.elapsed() >= Duration::from_millis(150) {
-                on_progress(done, total);
-                last_emit = Instant::now();
-            }
         }
-        file.flush().map_err(|e| format!("Lỗi ghi file: {e}"))?;
-        Ok(())
-    })();
-    drop(file);
+        fs::OpenOptions::new()
+            .append(true)
+            .open(tmp)
+            .map_err(|e| AttemptErr::Fatal(format!("Không ghi được file tạm: {e}")))?
+    } else {
+        fs::File::create(tmp).map_err(|e| AttemptErr::Fatal(format!("Không ghi được file tạm: {e}")))?
+    };
 
-    if let Err(e) = result {
-        let _ = fs::remove_file(&tmp);
-        return Err(e);
+    let remaining = resp
+        .header("Content-Length")
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&n| n > 0);
+    let total = remaining.map(|r| r + done).unwrap_or(size_hint).max(done);
+
+    let mut reader = resp.into_reader();
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut last_emit = Instant::now();
+    on_progress(done, total);
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            let _ = file.flush();
+            return Err(AttemptErr::Cancelled);
+        }
+        let n = match reader.read(&mut buf) {
+            Ok(n) => n,
+            Err(e) => {
+                let _ = file.flush();
+                return Err(AttemptErr::Retry(format!("Lỗi khi tải: {e}")));
+            }
+        };
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n])
+            .map_err(|e| AttemptErr::Fatal(format!("Lỗi ghi file: {e}")))?;
+        hasher.update(&buf[..n]);
+        done += n as u64;
+        if last_emit.elapsed() >= Duration::from_millis(150) {
+            on_progress(done, total);
+            last_emit = Instant::now();
+        }
     }
+    file.flush().map_err(|e| AttemptErr::Fatal(format!("Lỗi ghi file: {e}")))?;
+    drop(file);
     on_progress(done, total.max(done));
+
+    // Kết nối bị cắt sớm mà không báo lỗi → còn thiếu byte: giữ `.part`, nối tiếp.
+    if remaining.is_some() && done < total {
+        return Err(AttemptErr::Retry("Kết nối bị ngắt giữa chừng".into()));
+    }
 
     let got = format!("{:x}", hasher.finalize());
     if !got.eq_ignore_ascii_case(expect_sha256) {
-        let _ = fs::remove_file(&tmp);
-        return Err(format!(
+        let _ = fs::remove_file(tmp);
+        let msg = format!(
             "File tải về không khớp mã SHA-256 (nhận {got}, mong đợi {expect_sha256}) — đã xoá, hãy thử lại."
-        ));
+        );
+        // Nếu vừa nối tiếp từ `.part` cũ thì có thể phần cũ hỏng → thử lại từ đầu 1 lần.
+        return Err(if resumed { AttemptErr::Retry(msg) } else { AttemptErr::Fatal(msg) });
     }
-    let _ = fs::remove_file(dest);
-    fs::rename(&tmp, dest).map_err(|e| format!("Không lưu được file: {e}"))
+    Ok(())
 }
 
 /// Giải nén CHỈ `whisper-cli.exe` + các DLL (làm phẳng đường dẫn → chống
@@ -313,9 +515,9 @@ fn extract_engine(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn install_engine(root: &Path, mut on_progress: impl FnMut(u64, u64)) -> Result<(), String> {
+fn install_engine(root: &Path, cancel: &AtomicBool, mut on_progress: impl FnMut(u64, u64)) -> Result<(), String> {
     let zip_path = root.join("downloads").join("whisper-bin-x64.zip");
-    download_verified(ENGINE_URL, ENGINE_SHA256, ENGINE_SIZE, &zip_path, &mut on_progress)?;
+    download_verified(ENGINE_URL, ENGINE_SHA256, ENGINE_SIZE, &zip_path, cancel, &mut on_progress)?;
     let staging = root.join("engine.tmp");
     let _ = fs::remove_dir_all(&staging);
     extract_engine(&zip_path, &staging).map_err(|e| {
@@ -332,18 +534,35 @@ fn install_engine(root: &Path, mut on_progress: impl FnMut(u64, u64)) -> Result<
 
 /* ───────────── Tiến trình con có thể huỷ ───────────── */
 
-fn spawn_tracked(cmd: &mut Command) -> Result<(Option<ChildStdout>, Option<ChildStderr>), String> {
+/// Chạy ở mức ưu tiên THẤP (BELOW_NORMAL) để nhận diện giọng nói — vốn ngốn CPU —
+/// không làm đơ giao diện/các app khác trong lúc người dùng làm việc khác.
+#[cfg(windows)]
+const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+
+fn spawn_tracked(
+    slot: &'static Slot,
+    cmd: &mut Command,
+    low_priority: bool,
+) -> Result<(Option<ChildStdout>, Option<ChildStderr>), String> {
     crate::record::proc::no_window(cmd);
+    #[cfg(windows)]
+    if low_priority {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
+    }
+    #[cfg(not(windows))]
+    let _ = low_priority;
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Không khởi chạy được tiến trình: {e}"))?;
     let out = child.stdout.take();
     let err = child.stderr.take();
     {
-        let mut slot = ACTIVE_CHILD.lock().unwrap_or_else(|e| e.into_inner());
-        *slot = Some(child);
-        if cancelled() {
-            if let Some(c) = slot.as_mut() {
+        let mut held = slot.child.lock().unwrap_or_else(|e| e.into_inner());
+        *held = Some(child);
+        if cancelled(slot) {
+            if let Some(c) = held.as_mut() {
                 let _ = c.kill();
             }
         }
@@ -351,8 +570,8 @@ fn spawn_tracked(cmd: &mut Command) -> Result<(Option<ChildStdout>, Option<Child
     Ok((out, err))
 }
 
-fn finish_tracked() -> Result<ExitStatus, String> {
-    let child = ACTIVE_CHILD.lock().unwrap_or_else(|e| e.into_inner()).take();
+fn finish_tracked(slot: &Slot) -> Result<ExitStatus, String> {
+    let child = slot.child.lock().unwrap_or_else(|e| e.into_inner()).take();
     match child {
         Some(mut c) => c.wait().map_err(|e| format!("Lỗi chờ tiến trình: {e}")),
         None => Err("Tiến trình đã bị dừng.".into()),
@@ -646,6 +865,7 @@ struct WhisperRun {
 }
 
 fn run_whisper(
+    slot: &'static Slot,
     cli: &Path,
     model: &Path,
     wav: &Path,
@@ -656,6 +876,7 @@ fn run_whisper(
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
+        .saturating_sub(1) // chừa 1 nhân cho giao diện
         .clamp(2, 8);
     let mut cmd = Command::new(cli);
     if let Some(dir) = cli.parent() {
@@ -673,7 +894,7 @@ fn run_whisper(
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
-    let (_out, err) = spawn_tracked(&mut cmd)?;
+    let (_out, err) = spawn_tracked(slot, &mut cmd, true)?;
     let mut log: Vec<String> = Vec::new();
     let mut language: Option<String> = None;
     if let Some(err) = err {
@@ -691,8 +912,8 @@ fn run_whisper(
             }
         });
     }
-    let status = finish_tracked()?;
-    if cancelled() {
+    let status = finish_tracked(slot)?;
+    if cancelled(slot) {
         return Err(CANCELLED_MSG.into());
     }
     if !status.success() {
@@ -741,6 +962,7 @@ fn export_soft(
 /// cwd = `work_dir` và đường dẫn TƯƠNG ĐỐI để tránh hoàn toàn việc escape đường
 /// dẫn Windows (`C\:/...`) trong filter `subtitles`.
 fn export_burn(
+    slot: &'static Slot,
     ffmpeg: &Path,
     input: &Path,
     work_dir: &Path,
@@ -766,7 +988,7 @@ fn export_burn(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let (out, err) = spawn_tracked(&mut cmd)?;
+    let (out, err) = spawn_tracked(slot, &mut cmd, false)?;
     let err_thread = err.map(|e| {
         std::thread::spawn(move || {
             let mut lines = Vec::new();
@@ -797,9 +1019,9 @@ fn export_burn(
             }
         });
     }
-    let status = finish_tracked()?;
+    let status = finish_tracked(slot)?;
     let err_lines = err_thread.and_then(|t| t.join().ok()).unwrap_or_default();
-    if cancelled() {
+    if cancelled(slot) {
         let _ = fs::remove_file(output);
         return Err(CANCELLED_MSG.into());
     }
@@ -842,7 +1064,7 @@ fn apply_captions_in_place(
     let result = if mode == "soft" {
         export_soft(ffmpeg, file, &srt, &staged, lang)
     } else {
-        export_burn(ffmpeg, file, &tmp.0, &staged, duration_ms, on_progress)
+        export_burn(&EXPORT, ffmpeg, file, &tmp.0, &staged, duration_ms, on_progress)
     };
     if let Err(e) = result {
         let _ = fs::remove_file(&staged);
@@ -871,30 +1093,79 @@ pub(crate) fn apply_to_file(
     if format_srt(&req.segments).is_empty() {
         return Ok(());
     }
-    let _guard = JobGuard::acquire()?;
+    let _guard = JobGuard::acquire(&EXPORT)?;
     let ffmpeg = crate::record::encoder::sidecar_path("ffmpeg")?;
-    emit_progress(app, "export", 0, 100);
+    let ctx = Ctx::new("export");
+    report(app, &ctx, "export", 0, 100);
     let a = app.clone();
-    apply_captions_in_place(&ffmpeg, file, &req.segments, &req.mode, &lang, duration_ms, move |p| {
-        emit_progress(&a, "export", p as u64, 100)
-    })?;
-    emit_progress(app, "export", 100, 100);
+    let c = ctx.clone();
+    let result = apply_captions_in_place(&ffmpeg, file, &req.segments, &req.mode, &lang, duration_ms, move |p| {
+        report(&a, &c, "export", p as u64, 100)
+    });
+    clear_running(&ctx);
+    result?;
     Ok(())
 }
 
 /* ───────────── Tauri commands ───────────── */
 
-fn emit_progress(app: &AppHandle, stage: &'static str, done: u64, total: u64) {
+/// Phát tiến độ + ghi vào registry (để cửa sổ mở sau vẫn thấy tác vụ đang chạy).
+fn report(app: &AppHandle, ctx: &Ctx, stage: &'static str, done: u64, total: u64) {
     let percent = if total > 0 { ((done * 100) / total).min(100) as u32 } else { 0 };
+    let p = Progress {
+        job: ctx.job,
+        stage,
+        percent,
+        done_bytes: done,
+        total_bytes: total,
+        video_path: ctx.video_path.clone(),
+        model_id: ctx.model_id.clone(),
+        index: ctx.index,
+        count: ctx.count,
+        started_ms: ctx.started_ms,
+    };
+    registry().running.insert(ctx.job, p.clone());
+    let _ = app.emit("captions-progress", p);
+}
+
+fn clear_running(ctx: &Ctx) {
+    registry().running.remove(ctx.job);
+}
+
+fn emit_finished(app: &AppHandle, ctx: &Ctx, result: &Result<(), String>) {
+    let (ok, was_cancelled, error) = match result {
+        Ok(()) => (true, false, None),
+        Err(e) if e == CANCELLED_MSG => (false, true, None),
+        Err(e) => (false, false, Some(e.clone())),
+    };
     let _ = app.emit(
-        "captions-progress",
-        Progress {
-            stage,
-            percent,
-            done_bytes: done,
-            total_bytes: total,
+        "captions-job-finished",
+        Finished {
+            job: ctx.job,
+            video_path: ctx.video_path.clone(),
+            ok,
+            cancelled: was_cancelled,
+            error,
         },
     );
+}
+
+/// Chạy `f` ở 1 thread nền; panic được chuyển thành lỗi để làn tác vụ luôn được
+/// giải phóng và giao diện không kẹt ở "đang chạy" mãi mãi.
+fn spawn_job<T: Send + 'static>(
+    name: &str,
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+    done: impl FnOnce(Result<T, String>) + Send + 'static,
+) -> Result<(), String> {
+    std::thread::Builder::new()
+        .name(name.to_string())
+        .spawn(move || {
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+                .unwrap_or_else(|_| Err("Lỗi nội bộ khi xử lý phụ đề.".to_string()));
+            done(r);
+        })
+        .map(|_| ())
+        .map_err(|e| format!("Không khởi chạy được luồng xử lý: {e}"))
 }
 
 #[tauri::command]
@@ -915,93 +1186,212 @@ pub fn captions_status(app: AppHandle) -> CaptionsStatus {
     }
 }
 
-/// Cài engine (nếu chưa có) + model `model_id` (nếu chưa có). Phát sự kiện
-/// `captions-progress` (stage "engine"/"model").
+/// Tác vụ nền đang chạy + các kết quả nhận diện chưa ai nhận. Cửa sổ vừa mở
+/// (hoặc mở lại sau khi đóng) gọi hàm này để nối lại với tác vụ đang chạy.
 #[tauri::command]
-pub async fn captions_setup(app: AppHandle, model_id: String) -> Result<(), String> {
-    ensure_supported()?;
-    let def = model_def(&model_id)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let _guard = JobGuard::acquire()?;
-        let root = root_dir(&app);
-        if !engine_ready(&engine_dir(&app)) {
-            let a = app.clone();
-            install_engine(&root, move |d, t| emit_progress(&a, "engine", d, t))?;
-        }
-        let mdir = models_dir(&app);
-        if !model_ready(&mdir, def) {
-            let a = app.clone();
-            download_verified(
-                &model_url(def.file),
-                def.sha256,
-                def.size,
-                &mdir.join(def.file),
-                move |d, t| emit_progress(&a, "model", d, t),
-            )?;
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("Task join error: {e}"))?
+pub fn captions_jobs() -> JobsSnapshot {
+    let reg = registry();
+    JobsSnapshot {
+        running: reg.running.values().cloned().collect(),
+        pending: reg.outcomes.keys().cloned().collect(),
+    }
 }
 
-/// Huỷ tác vụ phụ đề đang chạy (tải về / nhận diện / xuất video).
+/// Lấy (và xoá khỏi bộ nhớ) kết quả nhận diện của `video_path`, nếu đã xong.
 #[tauri::command]
-pub fn captions_cancel() {
-    CANCEL.store(true, Ordering::SeqCst);
-    if let Some(c) = ACTIVE_CHILD.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+pub fn captions_take_outcome(video_path: String) -> Option<TranscribeOutcome> {
+    registry().outcomes.remove(&video_path)
+}
+
+/// Tải engine (nếu chưa có) + TẤT CẢ các model được chọn, lần lượt, ở nền. Trả về
+/// ngay; tiến độ qua sự kiện `captions-progress` (job "download"), kết thúc qua
+/// `captions-job-finished`. Không chặn nhận diện/xuất video đang chạy.
+#[tauri::command]
+pub async fn captions_setup(app: AppHandle, model_ids: Vec<String>) -> Result<(), String> {
+    ensure_supported()?;
+    let mut defs: Vec<&'static ModelDef> = Vec::new();
+    for id in &model_ids {
+        let d = model_def(id)?;
+        if !defs.iter().any(|x| x.id == d.id) {
+            defs.push(d);
+        }
+    }
+    let mdir = models_dir(&app);
+    let todo: Vec<&'static ModelDef> = defs.into_iter().filter(|d| !model_ready(&mdir, d)).collect();
+    let need_engine = !engine_ready(&engine_dir(&app));
+    if todo.is_empty() && !need_engine {
+        return Ok(());
+    }
+    let guard = JobGuard::acquire(&DOWNLOAD)?;
+
+    let mut base = Ctx::new("download");
+    base.count = todo.len() as u32;
+    report(&app, &base, if need_engine { "engine" } else { "model" }, 0, 0);
+
+    let a = app.clone();
+    let b = base.clone();
+    let spawned = spawn_job(
+        "captions-download",
+        move || {
+            let root = root_dir(&a);
+            if !engine_ready(&engine_dir(&a)) {
+                let (aa, bb) = (a.clone(), b.clone());
+                install_engine(&root, &DOWNLOAD.cancel, move |d, t| report(&aa, &bb, "engine", d, t))?;
+            }
+            let mdir = models_dir(&a);
+            for (i, def) in todo.iter().enumerate() {
+                if model_ready(&mdir, def) {
+                    continue;
+                }
+                let mut ctx = b.clone();
+                ctx.model_id = Some(def.id.to_string());
+                ctx.index = (i + 1) as u32;
+                let aa = a.clone();
+                let cc = ctx.clone();
+                download_verified(
+                    &model_url(def.file),
+                    def.sha256,
+                    def.size,
+                    &mdir.join(def.file),
+                    &DOWNLOAD.cancel,
+                    move |d, t| report(&aa, &cc, "model", d, t),
+                )?;
+            }
+            Ok(())
+        },
+        {
+            let a = app.clone();
+            let b = base.clone();
+            move |res: Result<(), String>| {
+                drop(guard); // giải phóng làn TRƯỚC khi báo xong để giao diện bấm tải tiếp được ngay
+                clear_running(&b);
+                emit_finished(&a, &b, &res);
+            }
+        },
+    );
+    if let Err(e) = spawned {
+        clear_running(&base);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Huỷ tác vụ phụ đề đang chạy. `job`: "download" | "transcribe" | "export".
+#[tauri::command]
+pub fn captions_cancel(job: String) {
+    let Some(slot) = slot_by_name(&job) else { return };
+    slot.cancel.store(true, Ordering::SeqCst);
+    if let Some(c) = slot.child.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
         let _ = c.kill();
     }
 }
 
+/// Nhận diện giọng nói ở NỀN: trả về ngay. Kết quả được giữ ở backend (xem
+/// `captions_take_outcome`) nên đóng hộp thoại hay đóng cả cửa sổ Editor đều không
+/// làm mất công việc đã chạy.
 #[tauri::command]
-pub async fn captions_transcribe(
+pub async fn captions_transcribe_start(
     app: AppHandle,
     video_path: String,
     language: String,
     model_id: String,
-) -> Result<TranscribeResult, String> {
+) -> Result<(), String> {
     ensure_supported()?;
     let lang = validate_lang(&language)?;
     let def = model_def(&model_id)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let _guard = JobGuard::acquire()?;
-        let video = PathBuf::from(&video_path);
-        require_existing_file(&video)?;
+    let video = PathBuf::from(&video_path);
+    require_existing_file(&video)?;
+    if !engine_ready(&engine_dir(&app)) || !model_ready(&models_dir(&app), def) {
+        return Err("Chưa cài đặt engine/model phụ đề — hãy bấm “Tải về & cài đặt” trước.".into());
+    }
+    let guard = JobGuard::acquire(&TRANSCRIBE)?;
+    registry().outcomes.remove(&video_path);
 
-        let cli = engine_dir(&app).join(CLI_NAME);
-        let model = models_dir(&app).join(def.file);
-        if !engine_ready(&engine_dir(&app)) || !model_ready(&models_dir(&app), def) {
-            return Err("Chưa cài đặt engine/model phụ đề — hãy bấm “Tải về & cài đặt” trước.".into());
-        }
-        let ffmpeg = crate::record::encoder::sidecar_path("ffmpeg")?;
+    let mut ctx = Ctx::new("transcribe");
+    ctx.video_path = Some(video_path.clone());
+    ctx.model_id = Some(model_id);
+    ctx.index = 1;
+    ctx.count = 1;
+    report(&app, &ctx, "audio", 0, 100);
 
-        let tmp = TempDir::new()?;
-        let wav = tmp.0.join("audio.wav");
-        emit_progress(&app, "audio", 0, 100);
-        extract_audio(&ffmpeg, &video, &wav)?;
-        if cancelled() {
-            return Err(CANCELLED_MSG.into());
-        }
+    let (a, c) = (app.clone(), ctx.clone());
+    let spawned = spawn_job(
+        "captions-transcribe",
+        move || transcribe_blocking(&a, &video, &lang, def, &c),
+        {
+            let (a, c) = (app.clone(), ctx.clone());
+            move |res: Result<TranscribeResult, String>| {
+                drop(guard);
+                let path = c.video_path.clone().unwrap_or_default();
+                let unit = match res {
+                    Ok(r) => {
+                        registry().outcomes.insert(
+                            path,
+                            TranscribeOutcome { ok: true, error: None, language: r.language, segments: r.segments },
+                        );
+                        Ok(())
+                    }
+                    Err(e) => {
+                        if e != CANCELLED_MSG {
+                            registry().outcomes.insert(
+                                path,
+                                TranscribeOutcome {
+                                    ok: false,
+                                    error: Some(e.clone()),
+                                    language: String::new(),
+                                    segments: vec![],
+                                },
+                            );
+                        }
+                        Err(e)
+                    }
+                };
+                clear_running(&c);
+                emit_finished(&a, &c, &unit);
+            }
+        },
+    );
+    if let Err(e) = spawned {
+        clear_running(&ctx);
+        return Err(e);
+    }
+    Ok(())
+}
 
-        let a = app.clone();
-        let run = run_whisper(&cli, &model, &wav, &lang, &tmp.0.join("out"), move |p| {
-            emit_progress(&a, "transcribe", p as u64, 100)
-        })?;
-        let raw = fs::read_to_string(&run.srt_path).map_err(|e| format!("Không đọc được kết quả: {e}"))?;
-        let segments = normalize_segments(parse_srt(&raw));
-        if segments.is_empty() {
-            return Err("Không nhận diện được lời thoại nào trong video (có thể video không có tiếng nói).".into());
-        }
-        let language = if lang == "auto" {
-            run.language.unwrap_or_else(|| "auto".to_string())
-        } else {
-            lang
-        };
-        Ok(TranscribeResult { language, segments })
-    })
-    .await
-    .map_err(|e| format!("Task join error: {e}"))?
+fn transcribe_blocking(
+    app: &AppHandle,
+    video: &Path,
+    lang: &str,
+    def: &'static ModelDef,
+    ctx: &Ctx,
+) -> Result<TranscribeResult, String> {
+    let cli = engine_dir(app).join(CLI_NAME);
+    let model = models_dir(app).join(def.file);
+    let ffmpeg = crate::record::encoder::sidecar_path("ffmpeg")?;
+
+    let tmp = TempDir::new()?;
+    let wav = tmp.0.join("audio.wav");
+    report(app, ctx, "audio", 0, 100);
+    extract_audio(&ffmpeg, video, &wav)?;
+    if cancelled(&TRANSCRIBE) {
+        return Err(CANCELLED_MSG.into());
+    }
+
+    let (a, c) = (app.clone(), ctx.clone());
+    let run = run_whisper(&TRANSCRIBE, &cli, &model, &wav, lang, &tmp.0.join("out"), move |p| {
+        report(&a, &c, "transcribe", p as u64, 100)
+    })?;
+    let raw = fs::read_to_string(&run.srt_path).map_err(|e| format!("Không đọc được kết quả: {e}"))?;
+    let segments = normalize_segments(parse_srt(&raw));
+    if segments.is_empty() {
+        return Err("Không nhận diện được lời thoại nào trong video (có thể video không có tiếng nói).".into());
+    }
+    let language = if lang == "auto" {
+        run.language.unwrap_or_else(|| "auto".to_string())
+    } else {
+        lang.to_string()
+    };
+    Ok(TranscribeResult { language, segments })
 }
 
 #[tauri::command]
@@ -1033,7 +1423,7 @@ pub async fn captions_export_video(
     }
     let lang = validate_lang(&language)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = JobGuard::acquire()?;
+        let _guard = JobGuard::acquire(&EXPORT)?;
         let input = PathBuf::from(&input_path);
         let output = PathBuf::from(&output_path);
         require_existing_file(&input)?;
@@ -1051,23 +1441,26 @@ pub async fn captions_export_video(
         fs::write(&srt, format_srt(&segments)).map_err(|e| format!("Không ghi được SRT tạm: {e}"))?;
 
         // Ghi ra file tạm cạnh đích rồi đổi tên → không để lại video dở dang ở đích khi lỗi/huỷ.
+        let ctx = Ctx::new("export");
         let staged = output.with_extension("captions.part.mp4");
         let result = if mode == "soft" {
-            emit_progress(&app, "export", 0, 100);
+            report(&app, &ctx, "export", 0, 100);
             export_soft(&ffmpeg, &input, &srt, &staged, &lang)
         } else {
-            let a = app.clone();
-            export_burn(&ffmpeg, &input, &tmp.0, &staged, duration_ms, move |p| {
-                emit_progress(&a, "export", p as u64, 100)
+            let (a, c) = (app.clone(), ctx.clone());
+            export_burn(&EXPORT, &ffmpeg, &input, &tmp.0, &staged, duration_ms, move |p| {
+                report(&a, &c, "export", p as u64, 100)
             })
         };
         if let Err(e) = result {
+            clear_running(&ctx);
             let _ = fs::remove_file(&staged);
             return Err(e);
         }
         let _ = fs::remove_file(&output);
         fs::rename(&staged, &output).map_err(|e| format!("Không lưu được video: {e}"))?;
-        emit_progress(&app, "export", 100, 100);
+        report(&app, &ctx, "export", 100, 100);
+        clear_running(&ctx);
         crate::record::allow_asset_file(&app, &output);
         Ok(output.to_string_lossy().to_string())
     })
@@ -1208,7 +1601,7 @@ mod tests {
         assert!(wav.metadata().unwrap().len() > 10_000);
 
         let mut last = 0;
-        let run = run_whisper(&cli, &model, &wav, "en", &tmp.0.join("out"), |p| last = p).expect("whisper");
+        let run = run_whisper(&TRANSCRIBE, &cli, &model, &wav, "en", &tmp.0.join("out"), |p| last = p).expect("whisper");
         assert_eq!(last, 100);
         let segs = normalize_segments(parse_srt(&fs::read_to_string(&run.srt_path).unwrap()));
         println!("SEGMENTS: {segs:#?}");
@@ -1228,7 +1621,7 @@ mod tests {
 
         let burn = dir.join("out_burn.mp4");
         let mut seen = 0;
-        export_burn(&ffmpeg, &video, &tmp.0, &burn, 12_000, |p| seen = p).expect("burn");
+        export_burn(&EXPORT, &ffmpeg, &video, &tmp.0, &burn, 12_000, |p| seen = p).expect("burn");
         assert!(burn.metadata().unwrap().len() > 1_000);
         println!("burn progress max seen: {seen}");
 
@@ -1243,6 +1636,101 @@ mod tests {
         let missing = tmp.0.join("missing.mp4");
         assert!(apply_captions_in_place(&ffmpeg, &missing, &segs, "burn", "en", 1_000, |_| {}).is_err());
         assert!(!missing.with_extension("captions.part.mp4").exists());
+    }
+
+    /// Máy chủ giả: lần 1 gửi 250 KB rồi ngắt kết nối; lần 2 phải nhận `Range` và
+    /// trả phần còn lại (206). Kết quả cuối phải khớp SHA-256 toàn file.
+    #[test]
+    fn download_resumes_after_dropped_connection() {
+        use std::net::TcpListener;
+        let payload: Vec<u8> = (0..600_000u32).map(|i| (i % 251) as u8).collect();
+        let mut h = Sha256::new();
+        h.update(&payload);
+        let sha = format!("{:x}", h.finalize());
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let data = payload.clone();
+        let server = std::thread::spawn(move || {
+            let mut starts = Vec::new();
+            for round in 0..2 {
+                let (mut sock, _) = listener.accept().unwrap();
+                let mut req = Vec::new();
+                let mut b = [0u8; 1024];
+                loop {
+                    let n = sock.read(&mut b).unwrap();
+                    req.extend_from_slice(&b[..n]);
+                    if n == 0 || req.windows(4).any(|w| w == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                let text = String::from_utf8_lossy(&req).to_ascii_lowercase();
+                let start = text
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("range: bytes=")
+                            .and_then(|r| r.trim().trim_end_matches('-').parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                starts.push(start);
+                if round == 0 {
+                    let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", data.len());
+                    sock.write_all(head.as_bytes()).unwrap();
+                    sock.write_all(&data[..250_000]).unwrap();
+                } else {
+                    let body = &data[start..];
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nConnection: close\r\n\r\n",
+                        body.len(),
+                        start,
+                        data.len() - 1,
+                        data.len()
+                    );
+                    sock.write_all(head.as_bytes()).unwrap();
+                    sock.write_all(body).unwrap();
+                }
+            }
+            starts
+        });
+
+        let dir = TempDir::new().unwrap();
+        let dest = dir.0.join("m.bin");
+        let cancel = AtomicBool::new(false);
+        download_verified(&format!("http://127.0.0.1:{port}/m.bin"), &sha, 600_000, &dest, &cancel, |_, _| {})
+            .expect("tải phải thành công sau khi nối tiếp");
+        assert_eq!(fs::read(&dest).unwrap(), payload);
+        assert!(!dest.with_extension("part").exists(), "không để lại .part");
+        let starts = server.join().unwrap();
+        assert_eq!(starts[0], 0);
+        assert!(starts[1] > 0, "lần 2 phải xin tiếp từ byte đã có, không tải lại từ đầu: {starts:?}");
+    }
+
+    #[test]
+    fn job_slots_are_independent() {
+        let d = JobGuard::acquire(&DOWNLOAD).expect("download");
+        // Đang tải model vẫn nhận diện / xuất được.
+        let t = JobGuard::acquire(&TRANSCRIBE).expect("transcribe song song với download");
+        let e = JobGuard::acquire(&EXPORT).expect("export song song");
+        // Cùng 1 làn thì chặn.
+        assert!(JobGuard::acquire(&TRANSCRIBE).is_err());
+        drop(t);
+        assert!(JobGuard::acquire(&TRANSCRIBE).is_ok());
+        drop(d);
+        drop(e);
+        assert!(slot_by_name("download").is_some() && slot_by_name("nope").is_none());
+    }
+
+    #[test]
+    fn outcome_is_kept_until_taken() {
+        let key = "C:/tmp/outcome_test.mp4".to_string();
+        registry().outcomes.insert(
+            key.clone(),
+            TranscribeOutcome { ok: true, error: None, language: "vi".into(), segments: vec![seg(0, 1000, "x")] },
+        );
+        assert!(captions_jobs().pending.contains(&key));
+        let got = captions_take_outcome(key.clone()).expect("còn kết quả");
+        assert_eq!(got.segments.len(), 1);
+        assert!(captions_take_outcome(key).is_none(), "chỉ nhận được 1 lần");
     }
 
     #[test]

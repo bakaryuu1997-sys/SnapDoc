@@ -1,9 +1,12 @@
 // Bộ điều khiển WebView2 (CDP) cho SnapDoc E2E — chạy bằng Node 24 (WebSocket/fetch có sẵn).
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const PORT = 9333;
-export const SHOTS = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, "")), "shots");
+// `fileURLToPath` giải mã %-escape (đường dẫn dự án có dấu như "dự án") — dùng `.pathname`
+// thô sẽ tạo nhầm thư mục "d%E1%BB%B1%20%C3%A1n" ngoài dự án.
+export const SHOTS = path.join(path.dirname(fileURLToPath(import.meta.url)), "shots");
 fs.mkdirSync(SHOTS, { recursive: true });
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

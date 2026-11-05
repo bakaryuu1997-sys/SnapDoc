@@ -287,12 +287,48 @@ export interface CaptionBurnRequest {
   language: string;
 }
 
+export type CaptionsJobKind = "download" | "transcribe" | "export";
+
 export interface CaptionsProgress {
+  /** Làn tác vụ: tải engine/model, nhận diện giọng nói, hoặc xuất video có phụ đề. */
+  job: CaptionsJobKind;
   /** "edit" chỉ do frontend tự dựng từ sự kiện `trim-progress` (áp chỉnh sửa trước khi ghi phụ đề). */
   stage: "engine" | "model" | "audio" | "transcribe" | "export" | "edit";
   percent: number;
   doneBytes: number;
   totalBytes: number;
+  /** Video đang nhận diện (job "transcribe"). */
+  videoPath?: string | null;
+  /** Model đang tải (job "download", stage "model"). */
+  modelId?: string | null;
+  /** Tải nhiều model: model thứ `index` / `count`. */
+  index: number;
+  count: number;
+  /** Lúc tác vụ bắt đầu (ms từ epoch). */
+  startedMs: number;
+}
+
+/** Sự kiện `captions-job-finished`. */
+export interface CaptionsJobFinished {
+  job: CaptionsJobKind;
+  videoPath?: string | null;
+  ok: boolean;
+  cancelled: boolean;
+  error?: string | null;
+}
+
+export interface CaptionsJobsSnapshot {
+  running: CaptionsProgress[];
+  /** Video đã nhận diện xong nhưng chưa ai nhận kết quả. */
+  pending: string[];
+}
+
+/** Kết quả nhận diện (do backend giữ tới khi frontend nhận). */
+export interface CaptionsOutcome {
+  ok: boolean;
+  error?: string | null;
+  language: string;
+  segments: CaptionSegment[];
 }
 
 export const ipc = {
@@ -499,14 +535,15 @@ export const ipc = {
     invoke<{ link: string }>("drive_upload_history_item", { id }),
   /** Auto Caption: trạng thái engine/model, cài đặt, nhận diện, xuất. */
   captionsStatus: () => invoke<CaptionsStatus>("captions_status"),
-  captionsSetup: (modelId: string) => invoke<void>("captions_setup", { modelId }),
-  captionsCancel: () => invoke<void>("captions_cancel"),
-  captionsTranscribe: (videoPath: string, language: string, modelId: string) =>
-    invoke<{ language: string; segments: CaptionSegment[] }>("captions_transcribe", {
-      videoPath,
-      language,
-      modelId,
-    }),
+  /** Tải engine (nếu thiếu) + TẤT CẢ model được chọn, lần lượt, ở nền — trả về ngay. */
+  captionsSetup: (modelIds: string[]) => invoke<void>("captions_setup", { modelIds }),
+  captionsCancel: (job: CaptionsJobKind) => invoke<void>("captions_cancel", { job }),
+  /** Nhận diện giọng nói ở nền — trả về ngay; lấy kết quả bằng `captionsTakeOutcome`. */
+  captionsTranscribeStart: (videoPath: string, language: string, modelId: string) =>
+    invoke<void>("captions_transcribe_start", { videoPath, language, modelId }),
+  captionsJobs: () => invoke<CaptionsJobsSnapshot>("captions_jobs"),
+  captionsTakeOutcome: (videoPath: string) =>
+    invoke<CaptionsOutcome | null>("captions_take_outcome", { videoPath }),
   captionsSaveSrt: (outputPath: string, segments: CaptionSegment[]) =>
     invoke<string>("captions_save_srt", { outputPath, segments }),
   captionsExportVideo: (

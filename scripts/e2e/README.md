@@ -24,6 +24,8 @@ Start-Process .\snapdoc.exe
 
 Một số kịch bản (`s09`, `s10`) có đường dẫn tuyệt đối tới video/ffmpeg thử ở đầu file — sửa cho phù hợp máy bạn. `s09` tải engine + model Whisper thật (~70 MB).
 
+`s12_captions_background.mjs` kiểm tra phụ đề chạy nền (popup tiến độ, đóng Editor giữa chừng không mất kết quả, tải nhiều model một lượt, huỷ). Tải thật `base` + `small` (~250 MB, ~4 phút). Lưu ý khi viết kịch bản CDP: đừng `await` lệnh `close_self` (cửa sổ bị huỷ nên không bao giờ trả lời → script treo); phím Esc qua CDP bị bỏ nếu phần tử đang focus là nút vừa bị disable — đóng hộp thoại bằng cách click nút ✕; Editor còn mở từ lần chạy trước giữ state cũ → đóng hẳn rồi mở lại đầu mỗi kịch bản.
+
 ## Không tự động hoá (cần test tay)
 
 Chọn vùng/cuộn/quay màn hình, thumbnail sau chụp, tray, phím tắt toàn cục, OAuth Google thật, camera thật — vì chạm vào màn hình/camera/tài khoản của bạn.

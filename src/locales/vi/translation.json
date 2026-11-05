@@ -725,6 +725,26 @@
     "needHistory": "Video này không nằm trong Thư viện nên chưa xuất kèm chỉnh sửa được — hãy lưu video đã chỉnh sửa trước.",
     "savedEditedVideo": "Đã xuất video đã chỉnh sửa kèm phụ đề",
     "stageEdit": "Đang áp dụng chỉnh sửa vào video…",
-    "editedExportHint": "Video có chỉnh sửa: xuất video sẽ áp dụng các chỉnh sửa hiện tại (cắt, tốc độ, phóng to, crop, chú thích) rồi ghi phụ đề lên bản đó; mốc phụ đề tự khớp."
+    "editedExportHint": "Video có chỉnh sửa: xuất video sẽ áp dụng các chỉnh sửa hiện tại (cắt, tốc độ, phóng to, crop, chú thích) rồi ghi phụ đề lên bản đó; mốc phụ đề tự khớp.",
+    "setupDescMulti": "Cần tải engine Whisper ({{engine}}) và ít nhất 1 model nhận diện giọng nói — có thể tick nhiều model để tải một lượt (tải ở nền, đóng hộp thoại vẫn tiếp tục, bị ngắt sẽ tải tiếp). Tệp tải từ github.com/ggml-org/whisper.cpp và huggingface.co/ggerganov/whisper.cpp, được kiểm tra SHA-256 trước khi dùng.",
+    "installN": "Tải về & cài đặt ({{n}} model · {{size}})",
+    "selectAll": "Chọn tất cả model chưa cài",
+    "moreModels": "Tải thêm model ({{n}} chưa cài)",
+    "stageModelN": "Đang tải model {{name}} ({{i}}/{{n}})…",
+    "stageModelOne": "Đang tải model {{name}}…",
+    "bgHint": "Chạy nền — bạn có thể đóng hộp thoại này và tiếp tục làm việc.",
+    "startedBg": "Đang tạo phụ đề ở nền — bạn cứ tiếp tục chỉnh sửa, xong sẽ có thông báo",
+    "doneFlash": "Phụ đề đã tạo xong — hiện ngay trên trình phát",
+    "generating": "Đang tạo phụ đề…",
+    "busyOther": "Đang tạo phụ đề cho video khác…",
+    "chipEngine": "Đang tải engine Whisper…",
+    "chipModel": "Đang tải model {{name}}",
+    "chipModelN": "Đang tải model {{name}} ({{i}}/{{n}})",
+    "chipAudio": "Đang tách âm thanh…",
+    "chipTranscribe": "Đang tạo phụ đề…",
+    "chipOpen": "Mở phụ đề",
+    "modelBaseShort": "Nhanh",
+    "modelSmallShort": "Cân bằng",
+    "modelTurboShort": "Chính xác nhất"
   }
 }
