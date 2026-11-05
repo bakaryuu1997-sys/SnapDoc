@@ -119,6 +119,28 @@ export interface DocLayer {
 
 // ── History / Library ────────────────────────────────────────────────────────
 
+export interface McpInfo {
+  enabled: boolean;
+  writeEnabled: boolean;
+  running: boolean;
+  port: number;
+  token: string;
+  url: string;
+  exePath: string;
+  configDir: string;
+}
+
+export interface McpAuditEntry {
+  ts: number;
+  tool: string;
+  kind: "read" | "write" | "destructive" | "system";
+  args: string;
+  outcome: "ok" | "error" | "denied" | "running";
+  detail: string;
+  client: string;
+  durationMs: number;
+}
+
 export interface HistoryItem {
   id: string;
   createdAt: number;
@@ -537,6 +559,13 @@ export const ipc = {
    * preview đã ghép annotation; video: file .mp4 thật). */
   driveUploadHistoryItem: (id: string) =>
     invoke<{ link: string }>("drive_upload_history_item", { id }),
+  /** MCP (AI agent): trạng thái, công tắc, token, nhật ký. Xem `src-tauri/src/mcp`. */
+  mcpGetState: () => invoke<McpInfo>("mcp_get_state"),
+  mcpSetEnabled: (enabled: boolean) => invoke<McpInfo>("mcp_set_enabled", { enabled }),
+  mcpSetWrite: (enabled: boolean) => invoke<McpInfo>("mcp_set_write", { enabled }),
+  mcpRegenerateToken: () => invoke<McpInfo>("mcp_regenerate_token"),
+  mcpAuditList: (limit = 200) => invoke<McpAuditEntry[]>("mcp_audit_list", { limit }),
+  mcpAuditClear: () => invoke<void>("mcp_audit_clear"),
   /** Auto Caption: trạng thái engine/model, cài đặt, nhận diện, xuất. */
   captionsStatus: () => invoke<CaptionsStatus>("captions_status"),
   /** Tải engine (nếu thiếu) + TẤT CẢ model được chọn, lần lượt, ở nền — trả về ngay. */

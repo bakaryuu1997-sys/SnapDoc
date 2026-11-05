@@ -12,6 +12,42 @@
     "undo": "Hoàn tác",
     "redo": "Làm lại"
   },
+  "intake": {
+    "openVideo": "Mở video…",
+    "openVideoTooltip": "Chọn một file video trên máy để cắt, chỉnh tốc độ, tạo phụ đề… (cũng có thể kéo-thả file vào thanh)",
+    "dropToOpen": "Thả video hoặc ảnh để mở trong Editor",
+    "dropVideo": "Thả video để thêm vào Thư viện và mở trong Editor",
+    "paletteOpenVideo": "Mở video từ máy…",
+    "paletteOpenVideoDesc": "Chọn file video (mp4, mov, mkv…) để cắt, chỉnh tốc độ, tạo phụ đề. Cũng có thể kéo-thả file vào cửa sổ.",
+    "paletteOpenVideoPath": "Mở video đã dán trong Editor"
+  },
+  "agent": {
+    "title": "AI AGENT (MCP)",
+    "intro": "Cho phép Claude Code, Claude Desktop, Antigravity… kết nối với SnapDoc để đọc Thư viện và (nếu bạn cho phép) cắt/chỉnh video, tạo phụ đề. Chỉ nhận kết nối từ chính máy này (127.0.0.1) và phải có token.",
+    "enable": "Bật MCP server",
+    "runningAt": "Đang chạy tại {{url}}",
+    "off": "Đang tắt — không có cổng nào được mở.",
+    "write": "Cho phép agent GHI / SỬA / XOÁ",
+    "writeOn": "ĐANG BẬT — agent có thể nhập, cắt, đổi tên video, tạo phụ đề… Xoá và ghi đè bản gốc vẫn luôn hỏi bạn trong app.",
+    "writeOff": "TẮT (chỉ đọc) — mọi tool ghi bị từ chối. Khuyến nghị để tắt cho tới khi cần.",
+    "confirmTitle": "Bật quyền ghi cho AI agent?",
+    "confirmBody": "Agent sẽ có thể thêm video vào Thư viện, tạo bản cắt/crop/đổi tốc độ, tạo file phụ đề và đổi tên mục. Mọi thao tác được ghi nhật ký bên dưới. Chuyển vào Thùng rác và ghi đè video gốc vẫn cần bạn bấm đồng ý mỗi lần. Xoá vĩnh viễn không có trên MCP.",
+    "confirmYes": "Bật quyền ghi",
+    "connect": "KẾT NỐI",
+    "tokenLabel": "Token (giữ bí mật — ai có token là điều khiển được SnapDoc theo quyền ở trên)",
+    "hide": "Ẩn",
+    "show": "Hiện",
+    "copy": "Sao chép",
+    "regen": "Tạo token mới",
+    "desktopTitle": "Claude Desktop (claude_desktop_config.json) / Antigravity — qua cầu stdio",
+    "httpTitle": "Client hỗ trợ HTTP trực tiếp (vd Antigravity mcp_config.json)",
+    "logTitle": "NHẬT KÝ THAO TÁC CỦA AGENT",
+    "logIntro": "Ghi mọi lời gọi của agent (kể cả bị từ chối). Agent chỉ đọc được nhật ký, không sửa/xoá được; chỉ bạn xoá được ở đây.",
+    "refresh": "Làm mới",
+    "clear": "Xoá nhật ký…",
+    "clearYes": "Xoá hẳn",
+    "logEmpty": "Chưa có hoạt động nào."
+  },
   "settings": {
     "title": "Cài đặt",
     "saveFile": "LƯU FILE",
@@ -65,7 +101,8 @@
     "shortcutCrop": "Cắt xén khung hình",
     "shortcutLiveText": "Bật/Tắt Live Text OCR",
     "shortcutInstantGrab": "Trích xuất chữ siêu tốc vào Clipboard",
-    "shortcutEscape": "Thoát công cụ / Hủy thao tác"
+    "shortcutEscape": "Thoát công cụ / Hủy thao tác",
+    "tabAgent": "AI Agent"
   },
   "updates": {
     "checkingUpdates": "Đang kiểm tra…",

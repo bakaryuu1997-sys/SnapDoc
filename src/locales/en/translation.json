@@ -12,6 +12,42 @@
     "undo": "Undo",
     "redo": "Redo"
   },
+  "intake": {
+    "openVideo": "Open video…",
+    "openVideoTooltip": "Pick a video file to trim, change speed, add subtitles… (you can also drag & drop a file onto the bar)",
+    "dropToOpen": "Drop a video or image to open it in the Editor",
+    "dropVideo": "Drop a video to add it to the Library and open it in the Editor",
+    "paletteOpenVideo": "Open a video from disk…",
+    "paletteOpenVideoDesc": "Pick a video file (mp4, mov, mkv…) to trim, change speed or add subtitles. You can also drag & drop a file onto any window.",
+    "paletteOpenVideoPath": "Open pasted video in the Editor"
+  },
+  "agent": {
+    "title": "AI AGENT (MCP)",
+    "intro": "Let Claude Code, Claude Desktop, Antigravity… connect to SnapDoc to read your Library and (if you allow it) trim/edit videos and create subtitles. Only this computer (127.0.0.1) can connect, and a token is required.",
+    "enable": "Enable MCP server",
+    "runningAt": "Running at {{url}}",
+    "off": "Off — no port is open.",
+    "write": "Allow the agent to WRITE / EDIT / DELETE",
+    "writeOn": "ON — the agent can import, cut, rename videos, create subtitles… Deleting and overwriting originals always asks you in the app.",
+    "writeOff": "OFF (read-only) — every write tool is rejected. Recommended until you need it.",
+    "confirmTitle": "Enable write access for AI agents?",
+    "confirmBody": "The agent will be able to add videos to the Library, create trimmed/cropped/speed-changed copies, write subtitle files and rename items. Everything is logged below. Moving to Trash and overwriting an original video still need your approval each time. Permanent deletion is not available over MCP.",
+    "confirmYes": "Enable write access",
+    "connect": "CONNECT",
+    "tokenLabel": "Token (keep it secret — anyone with it can control SnapDoc within the permissions above)",
+    "hide": "Hide",
+    "show": "Show",
+    "copy": "Copy",
+    "regen": "New token",
+    "desktopTitle": "Claude Desktop (claude_desktop_config.json) / Antigravity — via stdio bridge",
+    "httpTitle": "Clients with direct HTTP support (e.g. Antigravity mcp_config.json)",
+    "logTitle": "AGENT ACTIVITY LOG",
+    "logIntro": "Records every agent call (including denied ones). Agents can only read the log; only you can clear it here.",
+    "refresh": "Refresh",
+    "clear": "Clear log…",
+    "clearYes": "Clear for good",
+    "logEmpty": "No activity yet."
+  },
   "settings": {
     "title": "Settings",
     "saveFile": "SAVE FILE",
@@ -65,7 +101,8 @@
     "shortcutCrop": "Crop canvas frame",
     "shortcutLiveText": "Toggle Live Text OCR",
     "shortcutInstantGrab": "Instant Text Grab to Clipboard",
-    "shortcutEscape": "Cancel / Exit tool"
+    "shortcutEscape": "Cancel / Exit tool",
+    "tabAgent": "AI Agent"
   },
   "updates": {
     "checkingUpdates": "Checking…",

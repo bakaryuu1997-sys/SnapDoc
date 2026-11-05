@@ -1,3 +1,4 @@
+import McpTab from "./McpTab";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
@@ -17,10 +18,10 @@ export default function Settings() {
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "installing" | "err">("idle");
   const [updateErr, setUpdateErr] = useState<string | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
-  const [activeTab, setActiveTab] = useState<"general" | "shortcuts" | "recording" | "permissions" | "cloud">(() => {
+  const [activeTab, setActiveTab] = useState<"general" | "shortcuts" | "recording" | "permissions" | "cloud" | "agent">(() => {
     try {
       const p = new URLSearchParams(window.location.search).get("tab");
-      if (p === "shortcuts" || p === "general" || p === "recording" || p === "permissions" || p === "cloud") {
+      if (p === "shortcuts" || p === "general" || p === "recording" || p === "permissions" || p === "cloud" || p === "agent") {
         return p;
       }
     } catch {}
@@ -291,6 +292,14 @@ export default function Settings() {
           <span>☁️</span>
           <span>{t("settings.tabCloud", "Chia sẻ")}</span>
         </button>
+        <button
+          style={{ ...tabBtn, ...(activeTab === "agent" ? tabBtnActive : null) }}
+          onClick={() => setActiveTab("agent")}
+          data-testid="tab-agent"
+        >
+          <span>🤖</span>
+          <span>{t("settings.tabAgent", "AI Agent")}</span>
+        </button>
       </div>
 
       {/* ── Scrollable body ── */}
@@ -548,6 +557,7 @@ export default function Settings() {
 
         {/* ── TAB 5: CLOUD SHARE (Google Drive) ── */}
         {activeTab === "cloud" && <CloudShareTab s={s} update={update} />}
+        {activeTab === "agent" && <McpTab />}
       </div>
 
       {/* ── Footer ── */}
