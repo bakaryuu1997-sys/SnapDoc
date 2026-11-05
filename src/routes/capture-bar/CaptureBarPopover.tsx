@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { ipc, type AudioSource, type OutputMode } from "../../lib/ipc";
+import { showError } from "../../lib/notify";
 
 export default function CaptureBarPopover() {
   const { t } = useTranslation();
@@ -238,6 +239,29 @@ export default function CaptureBarPopover() {
           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span>🎨</span>
             <span>Mở Editor</span>
+          </span>
+        </button>
+
+        {/* Mở video… — chọn file video từ máy để cắt/chỉnh sửa trong Editor (cũng kéo-thả được) */}
+        <button
+          style={{
+            ...popItem(false),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            color: "#fda4af",
+            fontWeight: 500,
+          }}
+          onClick={() => {
+            ipc.hideCaptureBarPopover().catch(() => {});
+            ipc.pickAndOpenVideo().catch((e) => showError(e));
+          }}
+          className="popover-btn"
+          title={t("intake.openVideoTooltip", "Chọn một file video trên máy để cắt, chỉnh tốc độ, tạo phụ đề… (cũng có thể kéo-thả file vào thanh)")}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span>🎞️</span>
+            <span>{t("intake.openVideo", "Mở video…")}</span>
           </span>
         </button>
 

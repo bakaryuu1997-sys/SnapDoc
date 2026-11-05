@@ -9,9 +9,12 @@ import HistoryPreviewPanel from "./HistoryPreviewPanel";
 import { useHistory } from "./useHistoryStore";
 import { ipc, type HistoryItem } from "../../lib/ipc";
 import { showError } from "../../lib/notify";
+import { useFileDrop } from "../../lib/useFileDrop";
 
 export default function HistoryWindow() {
   const { t } = useTranslation();
+  // Kéo video từ Explorer thả vào Thư viện → nhập vào Library và mở trong Editor.
+  const dropOver = useFileDrop({ images: false });
   const reload = useHistory((s) => s.reload);
   const addItem = useHistory((s) => s.addItem);
   const viewMode = useHistory((s) => s.viewMode);
@@ -48,6 +51,14 @@ export default function HistoryWindow() {
   // cửa sổ Tauri có JS heap/Zustand store độc lập), nên backend
   // (`history/commands.rs::trim_history_video`) emit event này để cửa sổ
   // History (đúng chỗ hiển thị danh sách) tự cập nhật.
+  // Backend (MCP, nhập video...) đổi Library từ nơi khác → tải lại danh sách.
+  useEffect(() => {
+    const unlisten = listen("history:changed", () => reload());
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [reload]);
+
   useEffect(() => {
     const unlisten = listen<HistoryItem>("history:item-added", (e) => addItem(e.payload));
     return () => {
@@ -147,9 +158,27 @@ export default function HistoryWindow() {
         </div>
       )}
       <CommandPalette />
+      {dropOver && (
+        <div style={dropOverlay}>🎬 {t("intake.dropVideo", "Thả video để thêm vào Thư viện và mở trong Editor")}</div>
+      )}
     </div>
   );
 }
+
+const dropOverlay: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  zIndex: 50,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(37, 99, 235, 0.82)",
+  border: "3px dashed rgba(255,255,255,0.85)",
+  color: "#fff",
+  fontSize: 18,
+  fontWeight: 600,
+  pointerEvents: "none",
+};
 
 const toastContainer: React.CSSProperties = {
   position: "absolute",

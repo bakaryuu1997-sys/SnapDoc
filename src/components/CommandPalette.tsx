@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ipc } from "../lib/ipc";
+import { showError } from "../lib/notify";
+import { cleanPath, looksLikeVideoPath } from "../lib/useFileDrop";
 
 interface CommandItem {
   id: string;
@@ -138,6 +140,14 @@ export default function CommandPalette() {
       action: () => { ipc.openCaptureBar().catch(() => {}); },
     },
     {
+      id: "open-video",
+      category: t("commandPalette.categorySystem", "Hệ thống"),
+      icon: "🎞️",
+      title: t("intake.paletteOpenVideo", "Mở video từ máy…"),
+      subtitle: t("intake.paletteOpenVideoDesc", "Chọn file video (mp4, mov, mkv…) để cắt, chỉnh tốc độ, tạo phụ đề. Cũng có thể kéo-thả file vào cửa sổ."),
+      action: () => { ipc.pickAndOpenVideo().catch((e) => showError(e)); },
+    },
+    {
       id: "open-settings",
       category: t("commandPalette.categorySystem", "Hệ thống"),
       icon: "⚙️",
@@ -172,15 +182,29 @@ export default function CommandPalette() {
   }, [open]);
 
   // Filter commands
-  const filtered = commands.filter((c) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      c.title.toLowerCase().includes(q) ||
-      c.subtitle.toLowerCase().includes(q) ||
-      c.category.toLowerCase().includes(q)
-    );
-  });
+  // Dán đường dẫn file video (kể cả kiểu "Copy as path" có ngoặc kép) → mục "Mở video" ở đầu danh sách.
+  const pastedVideo = looksLikeVideoPath(query) ? cleanPath(query) : null;
+  const filtered: CommandItem[] = [
+    ...(pastedVideo
+      ? [{
+          id: "open-video-path",
+          category: t("commandPalette.categorySystem", "Hệ thống"),
+          icon: "🎞️",
+          title: t("intake.paletteOpenVideoPath", "Mở video đã dán trong Editor"),
+          subtitle: pastedVideo,
+          action: () => { ipc.openVideoFilePath(pastedVideo).catch((e) => showError(e)); },
+        } as CommandItem]
+      : []),
+    ...commands.filter((c) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        c.title.toLowerCase().includes(q) ||
+        c.subtitle.toLowerCase().includes(q) ||
+        c.category.toLowerCase().includes(q)
+      );
+    }),
+  ];
 
   // Handle keyboard navigation
   const handleNav = (e: React.KeyboardEvent) => {

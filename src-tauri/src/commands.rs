@@ -1438,6 +1438,26 @@ pub async fn open_video_file_path(app: AppHandle, path: String) -> Result<(), St
         .map_err(|e| format!("Task join error: {e}"))?
 }
 
+/// "Mở video…" (menu Tuỳ chọn của Capture Bar, Command Palette Ctrl+K): hộp thoại
+/// chọn file video rồi mở thẳng trong Editor. `Ok(false)` nếu người dùng huỷ.
+/// `async` + `spawn_blocking`: hộp thoại chặn luồng, remux có thể lâu.
+#[tauri::command]
+pub async fn pick_and_open_video(app: AppHandle) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let picked = app
+            .dialog()
+            .file()
+            .add_filter("Video", &["mp4", "mov", "m4v", "webm", "mkv", "avi"])
+            .blocking_pick_file();
+        let Some(p) = picked else { return Ok(false) };
+        open_video_file_path_sync(&app, p.to_string())?;
+        Ok(true)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {e}"))?
+}
+
 /// macOS: cửa sổ editor "Open with" tự kéo PendingVideo của nó lúc mount.
 #[tauri::command]
 pub fn take_open_video_file(window: tauri::WebviewWindow, app: AppHandle) -> Option<PendingVideo> {

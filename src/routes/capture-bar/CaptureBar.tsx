@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { ipc, type CaptureMode, type OutputMode } from "../../lib/ipc";
 import { showError } from "../../lib/notify";
+import { useFileDrop } from "../../lib/useFileDrop";
 
 type RecordMode = "full" | "window" | "region";
 type ActiveGroup = "photo" | "video";
@@ -70,6 +71,8 @@ function formatShortcutLabel(raw: string | undefined): string {
 
 export default function CaptureBar() {
   const { t } = useTranslation();
+  // Kéo video/ảnh từ Explorer thả lên thanh → mở thẳng trong Editor.
+  const dropOver = useFileDrop();
   const [photoMode, setPhotoMode] = useState<CaptureMode>("region");
   const [videoMode, setVideoMode] = useState<RecordMode>("full");
   const [activeGroup, setActiveGroup] = useState<ActiveGroup>("photo");
@@ -228,6 +231,9 @@ export default function CaptureBar() {
   return (
     <div style={wrap}>
       <div style={bar}>
+        {dropOver && (
+          <div style={dropHint}>🎬 {t("intake.dropToOpen", "Thả video hoặc ảnh để mở trong Editor")}</div>
+        )}
         {/* Khu vực 1: chế độ CHỤP ẢNH */}
         <div style={modeGroup}>
           <button
@@ -356,6 +362,22 @@ const bar: React.CSSProperties = {
   padding: "7px 10px",
   width: "max-content",
   boxShadow: "0 6px 20px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.08)",
+};
+
+const dropHint: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  zIndex: 10,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 12,
+  background: "rgba(37, 99, 235, 0.92)",
+  border: "2px dashed rgba(255,255,255,0.85)",
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: 600,
+  pointerEvents: "none",
 };
 
 const modeGroup: React.CSSProperties = {

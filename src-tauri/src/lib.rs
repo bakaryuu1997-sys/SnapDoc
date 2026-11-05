@@ -210,6 +210,7 @@ pub fn run() {
             commands::open_files_dialog,
             commands::open_file_path,
             commands::open_video_file_path,
+            commands::pick_and_open_video,
             commands::take_open_file,
             commands::take_open_video_file,
             commands::default_save_dir,

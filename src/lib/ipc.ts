@@ -376,6 +376,10 @@ export const ipc = {
   takeOpenVideoFile: () => invoke<PendingVideo | null>("take_open_video_file"),
   /** Mở file video từ đường dẫn (Drag & Drop / Open with). */
   openVideoFilePath: (path: string) => invoke<void>("open_video_file_path", { path }),
+  /** Mở ảnh / tài liệu `.snapdoc` từ đường dẫn (kéo-thả vào Capture Bar). */
+  openFilePath: (path: string) => invoke<void>("open_file_path", { path }),
+  /** "Mở video…": hộp thoại chọn file video rồi mở trong Editor. `false` nếu người dùng huỷ. */
+  pickAndOpenVideo: () => invoke<boolean>("pick_and_open_video"),
   captureNow: (mode: CaptureMode, output: OutputMode) =>
     invoke<void>("capture_now", { mode, output }),
   /** Chụp nhanh: mở overlay trong suốt trên mọi màn hình để chọn vùng + chú thích. */
