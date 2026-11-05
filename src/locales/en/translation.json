@@ -112,7 +112,9 @@
     "captureCopy": "Capture & copy quickly",
     "captureCopyHint": "Capture area and copy to clipboard",
     "scroll": "Capture scroll",
-    "scrollHint": "Select area and scroll to combine long images"
+    "scrollHint": "Select area and scroll to combine long images",
+    "textGrab": "Grab text (OCR)",
+    "textGrabHint": "Select a screen area; the text is copied straight to the clipboard"
   },
   "tools": {
     "select": "Select / edit",

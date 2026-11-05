@@ -112,7 +112,9 @@
     "captureCopy": "Chụp & copy nhanh",
     "captureCopyHint": "Chụp vùng và copy vào clipboard",
     "scroll": "Chụp cuộn",
-    "scrollHint": "Chọn vùng rồi cuộn để ghép ảnh dài"
+    "scrollHint": "Chọn vùng rồi cuộn để ghép ảnh dài",
+    "textGrab": "Trích xuất chữ (OCR)",
+    "textGrabHint": "Chọn vùng màn hình, chữ được chép thẳng vào clipboard"
   },
   "tools": {
     "select": "Chọn / sửa",

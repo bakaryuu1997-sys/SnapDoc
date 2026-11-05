@@ -28,8 +28,13 @@ export default function HistoryPreviewPanel({ onOpenEditor }: Props) {
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  // Phải khai báo TRƯỚC `if (!item) return` bên dưới — hook sau early return gây React #310.
+  const [shareStatus, setShareStatus] = useState<"idle" | "uploading" | "done" | "err">("idle");
+  const [shareErr, setShareErr] = useState<string | null>(null);
 
   useEffect(() => {
+    setShareStatus("idle");
+    setShareErr(null);
     setRenaming(false);
     setTitleDraft(item?.title ?? "");
   }, [item?.id]);
@@ -225,8 +230,6 @@ export default function HistoryPreviewPanel({ onOpenEditor }: Props) {
 
   const doReveal = () => ipc.revealHistoryItem(item.id).catch(() => {});
 
-  const [shareStatus, setShareStatus] = useState<"idle" | "uploading" | "done" | "err">("idle");
-  const [shareErr, setShareErr] = useState<string | null>(null);
   const doShareDrive = async () => {
     setShareStatus("uploading");
     setShareErr(null);

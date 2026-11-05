@@ -1435,8 +1435,10 @@ pub async fn pin_image(
     windows::open_pinned_window(&app, src, width, height)
 }
 
+// BẮT BUỘC `async`: lệnh đồng bộ chạy trên luồng chính, mà tạo cửa sổ từ luồng
+// chính trên Windows gây deadlock (cả app đơ) — giống `pin_image` ở trên.
 #[tauri::command]
-pub fn open_webcam_bubble(app: AppHandle) -> Result<(), String> {
+pub async fn open_webcam_bubble(app: AppHandle) -> Result<(), String> {
     windows::open_webcam_bubble(&app)
 }
 

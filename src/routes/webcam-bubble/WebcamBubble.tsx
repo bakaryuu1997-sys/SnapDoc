@@ -39,6 +39,8 @@ export default function WebcamBubble() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [hovered, setHovered] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Chưa có hình (đang chờ người dùng cấp quyền camera / camera đang khởi động).
+  const [live, setLive] = useState(false);
 
   const setPrefs = (next: Prefs) => {
     setPrefsState(next);
@@ -50,6 +52,7 @@ export default function WebcamBubble() {
     let activeStream: MediaStream | null = null;
 
     const start = async () => {
+      setLive(false);
       try {
         // Xin quyền trước — `enumerateDevices()` chỉ trả `label` đầy đủ sau khi
         // đã có ít nhất 1 lần cấp quyền camera trong phiên này.
@@ -138,12 +141,14 @@ export default function WebcamBubble() {
             autoPlay
             playsInline
             muted
+            onPlaying={() => setLive(true)}
             style={{
               ...videoStyle,
               transform: prefs.mirrored ? "scaleX(-1)" : "none",
             }}
           />
         )}
+        {!live && !error && <div style={waitText}>Đang chờ quyền truy cập camera…</div>}
       </div>
       <div
         style={{ ...toolbar, opacity: hovered ? 1 : 0, pointerEvents: hovered ? "auto" : "none" }}
@@ -184,6 +189,7 @@ const wrap: React.CSSProperties = {
 };
 
 const frame: React.CSSProperties = {
+  position: "relative",
   width: "100%",
   height: "100%",
   overflow: "hidden",
@@ -199,6 +205,19 @@ const videoStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "cover",
+  pointerEvents: "none",
+};
+
+const waitText: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  padding: 18,
+  fontSize: 11.5,
+  color: "#cbd5e1",
   pointerEvents: "none",
 };
 

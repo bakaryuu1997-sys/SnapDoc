@@ -50,6 +50,7 @@ export default function Settings() {
     { key: "all",         label: t("shortcuts.all"),         hint: t("shortcuts.allHint") },
     { key: "captureCopy", label: t("shortcuts.captureCopy"), hint: t("shortcuts.captureCopyHint") },
     { key: "scroll",      label: t("shortcuts.scroll"),      hint: t("shortcuts.scrollHint") },
+    { key: "textGrab",    label: t("shortcuts.textGrab"),    hint: t("shortcuts.textGrabHint") },
   ];
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export default function Settings() {
         all:         "CmdOrCtrl+Shift+4",
         captureCopy: "CmdOrCtrl+Shift+C",
         scroll:      "CmdOrCtrl+Shift+6",
+        textGrab:    "CmdOrCtrl+Shift+T",
       };
       loaded.shortcuts = { ...defaults, ...(loaded.shortcuts ?? {}) };
       if (!loaded.saveDir) loaded.saveDir = await ipc.defaultSaveDir();

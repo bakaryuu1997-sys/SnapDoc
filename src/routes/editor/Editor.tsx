@@ -35,6 +35,7 @@ import { editorToolFromKey } from "../../lib/toolShortcuts";
 import StitchDialog from "../../features/annotation/compose/StitchDialog";
 import OcrInspectorModal from "./OcrInspectorModal";
 import { recognizeImage, preloadOcrModel, type OcrLanguageMode, OCR_LANG_PRESETS, saveOcrLang } from "../../lib/ocrService";
+import { findSensitiveBoxes } from "../../lib/sensitiveDetector";
 import type { StitchResult } from "../../features/annotation/compose/stitch";
 import { base64ToBlob } from "../../lib/blobUtils";
 
@@ -117,11 +118,20 @@ export default function Editor() {
   const [saveProgressTitle, setSaveProgressTitle] = useState<string>("");
 
   useEffect(() => {
+    // Tiến độ có thể đến từ luồng lưu của Editor (tự tắt hộp phủ ở `finally`) HOẶC
+    // từ nơi khác (vd xuất video kèm phụ đề ở hộp thoại phụ đề) — luồng sau không
+    // gọi `setSaveProgress(null)` nên phải tự dọn: tắt sau khi đạt 100% hoặc khi
+    // 30s không có tiến độ mới (lỗi/huỷ giữa chừng), tránh hộp phủ kẹt vĩnh viễn.
+    let clearTimer: ReturnType<typeof setTimeout> | null = null;
     const un = listen<number>("trim-progress", (event) => {
-      const frac = typeof event.payload === "number" ? event.payload : 0;
-      setSaveProgress(Math.min(1, Math.max(0, frac)));
+      const frac = Math.min(1, Math.max(0, typeof event.payload === "number" ? event.payload : 0));
+      setSaveProgress(frac);
+      setSaveProgressTitle((t) => t || "Đang xuất video...");
+      if (clearTimer) clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => setSaveProgress(null), frac >= 1 ? 800 : 30_000);
     });
     return () => {
+      if (clearTimer) clearTimeout(clearTimer);
       un.then((f) => f());
     };
   }, []);
@@ -721,48 +731,22 @@ export default function Editor() {
         return;
       }
 
-      const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      const API_KEY_REGEX = /^(?:sk-[a-zA-Z0-9_-]{16,}|gh[pousr]_[a-zA-Z0-9]{20,}|(?:AKIA|ASIA)[0-9A-Z]{16}|xox[baprs]-[0-9a-zA-Z-]{10,})$/i;
-      const JWT_REGEX = /^eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}$/;
-      const IPV4_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/;
-      const CREDIT_CARD_REGEX = /^(?:4[0-9]{3}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{1,4}|5[1-5][0-9]{2}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}|3[47][0-9]{2}[-\s]?[0-9]{6}[-\s]?[0-9]{5})$/;
-      const PHONE_VN_REGEX = /^(?:\+84|0)(?:3|5|7|8|9)\d{8}$/;
-      const PHONE_INTL_REGEX = /^\+[1-9]\d{1,2}[-.\s]?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}$/;
-
-      const isSensitive = (text: string) => {
-        // Làm sạch các dấu câu bao quanh từ OCR
-        const clean = text.trim().replace(/^['"([{<:;,.]+|['")\]}>:;,.]+$/g, "");
-        if (!clean || clean.length < 5) return false;
-
-        // Bỏ qua đường dẫn URL, file path, namespace package (@scope/pkg)
-        if (clean.startsWith("http://") || clean.startsWith("https://") || clean.startsWith("file://")) return false;
-        if (clean.includes("/") || clean.includes("\\")) return false;
-
-        if (EMAIL_REGEX.test(clean)) return true;
-        if (API_KEY_REGEX.test(clean)) return true;
-        if (JWT_REGEX.test(clean)) return true;
-        if (IPV4_REGEX.test(clean) && clean !== "127.0.0.1" && clean !== "0.0.0.0") return true;
-        if (CREDIT_CARD_REGEX.test(clean)) return true;
-        if (PHONE_VN_REGEX.test(clean)) return true;
-        if (clean.startsWith("+") && PHONE_INTL_REGEX.test(clean)) return true;
-
-        return false;
-      };
-
-      const sensitiveWords = res.words.filter((w) => isSensitive(w.text));
-      if (sensitiveWords.length === 0) {
-        flash("Không phát hiện thông tin nhạy cảm nào cần che (Email, Token, SĐT, IP)");
+      // Bộ phát hiện xử lý cả trường hợp OCR tách SĐT/thẻ thành nhiều từ và thêm
+      // dấu tiếng Việt vào email (xem `lib/sensitiveDetector.ts`).
+      const boxes = findSensitiveBoxes(res.words);
+      if (boxes.length === 0) {
+        flash("Không phát hiện thông tin nhạy cảm nào cần che (Email, Token, SĐT, IP, thẻ)");
         return;
       }
 
-      for (const w of sensitiveWords) {
+      for (const b of boxes) {
         addAnnotation({
           id: uid(),
           type: "blur",
-          x: Math.max(0, w.x - 3),
-          y: Math.max(0, w.y - 2),
-          width: w.w + 6,
-          height: w.h + 4,
+          x: Math.max(0, b.x - 3),
+          y: Math.max(0, b.y - 2),
+          width: b.w + 6,
+          height: b.h + 4,
           color: "#ef4444",
           strokeWidth: 0,
           blurMode: "pixelate",
@@ -770,7 +754,7 @@ export default function Editor() {
           solidColor: "#18181b",
         });
       }
-      flash(`Đã tự động che mờ ${sensitiveWords.length} vùng thông tin nhạy cảm! 🔒`);
+      flash(`Đã tự động che mờ ${boxes.length} vùng thông tin nhạy cảm! 🔒`);
     } catch (e) {
       flash(String(e));
     } finally {
