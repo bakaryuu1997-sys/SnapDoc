@@ -1,0 +1,13 @@
+import { attach, report, sleep } from "./cdp.mjs";
+const rows=[]; const add=(id,name,ok,note="")=>rows.push({id,name,ok,note});
+const bar = await attach("capture-bar");
+await bar.invoke("open_capture_bar");
+await sleep(1200);
+await bar.shot("02_capture_bar");
+const vp = await bar.viewport();
+const buttons = await bar.eval(`[...document.querySelectorAll('button')].map(b => (b.title || b.getAttribute('aria-label') || b.textContent || '').trim()).filter(Boolean)`);
+console.log("viewport", vp);
+console.log("nút:", buttons.join(" | "));
+add("ST-02a","Capture Bar hiển thị (đúng cửa sổ capture-bar)", vp.w > 400 && buttons.length >= 5, `${vp.w}x${vp.h}, ${buttons.length} nút`);
+add("ST-02b","Không lỗi console khi mở Capture Bar", bar.console.filter(c=>/EXCEPTION|error/i.test(c)).length===0, bar.console.slice(0,3).join(" ; "));
+bar.close(); report(rows);

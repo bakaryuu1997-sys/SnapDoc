@@ -1,0 +1,15 @@
+import { attach, report, sleep } from "./cdp.mjs";
+const rows=[]; const add=(id,name,ok,note="")=>rows.push({id,name,ok,note});
+const h = await attach("history");
+const before = (await h.invoke("list_history",{filter:{limit:20,offset:0,trashOnly:false}})).items.length;
+await h.clickText("Xoá (chuyển vào Trash)");
+await sleep(1000);
+await h.shot("17_history_after_delete");
+let txt = await h.text();
+const mid = (await h.invoke("list_history",{filter:{limit:20,offset:0,trashOnly:false}})).items.length;
+add("ST-07e","Xoá mục → rời danh sách + hiện toast Hoàn tác", mid === before-1 && /Hoàn tác/.test(txt), `trước=${before} sau=${mid}`);
+await h.clickText("Hoàn tác");
+await sleep(1200);
+const after = (await h.invoke("list_history",{filter:{limit:20,offset:0,trashOnly:false}})).items.length;
+add("ST-07f","Bấm Hoàn tác → mục quay lại danh sách", after === before, `sau hoàn tác=${after}`);
+h.close(); report(rows);

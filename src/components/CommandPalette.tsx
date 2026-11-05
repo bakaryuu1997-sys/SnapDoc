@@ -267,7 +267,7 @@ export default function CommandPalette() {
           <span style={{ opacity: 0.7 }}>
             ↑↓ Điều hướng · ↵ Chọn · Esc Đóng
           </span>
-          <span style={{ color: "#f59e0b", fontWeight: 600 }}>SnapDoc v3.9.1</span>
+          <span style={{ color: "#f59e0b", fontWeight: 600 }}>SnapDoc v3.9.2</span>
         </div>
       </div>
     </div>

@@ -28,3 +28,6 @@ secrets/
 /release/
 /*.traineddata
 /test_ocr/
+
+# Ảnh chụp của bộ E2E
+scripts/e2e/shots/

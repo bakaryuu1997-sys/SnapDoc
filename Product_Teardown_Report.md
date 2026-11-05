@@ -1,122 +1,64 @@
-# 🎯 BÁO CÁO PHẢN BIỆN SẢN PHẨM & ĐỘT PHÁ TÍNH NĂNG (PRODUCT TEARDOWN v2)
-**Sản phẩm:** SnapDoc (v3.8.4 - Personal Edition)  
-**Nền tảng:** Windows Desktop App (Tauri v2 + Rust + React 18 + TypeScript)  
-**Đối chiếu chuẩn mực Tier-1:** CleanShot X (macOS #1), Screen Studio (macOS), ShareX (Windows), Snagit (Enterprise TechSmith)  
-**Thời điểm đánh giá:** 30/10/2026  
+# Product Teardown — SnapDoc 3.9.x (v3, 2026-11-05)
 
----
+Dựa trên **mã nguồn thực tế** (74 file TS/TSX ≈ 36,5k dòng, 54 file Rust ≈ 25,6k dòng, 124 lệnh IPC, 18 loại cửa sổ, i18n vi/en cân bằng 662 khóa) và **kết quả chạy thật toàn bộ màn hình** (xem `docs/SnapDoc_Test_Report_3.9.1.md`). Báo cáo v2 cũ (30/10) đã lỗi thời: hầu hết đề xuất trong đó nay đã có.
 
-## 1. TỔNG QUAN ĐIỀU HÀNH (EXECUTIVE SUMMARY)
+## 1. Tóm tắt điều hành
 
-* **Điểm số Trưởng thành Sản phẩm (Product Maturity Score):** `8.2 / 10`  
-  *(Tăng từ 6.8 sau khi đã giải quyết triệt để 3 tính năng cốt lõi: Tách biệt rõ ràng cụm Chụp/Quay video với icon Camera chuẩn, Smart Empty State cho History, Optimistic Soft Delete với Toast Undo 5s, và Cửa sổ Pin to Screen đa tầng).*
-* **Bản chất sản phẩm:** SnapDoc hiện đã vượt xa các công cụ chụp màn hình Windows phổ thông (Snipping Tool, Lightshot) nhờ hiệu năng C++/Rust siêu nhẹ (~50MB installer so với hàng trăm MB của Electron), engine xử lý video native không phụ thuộc cloud, và canvas annotation rất phong phú.
-* **3 Tử huyệt Trải nghiệm còn lại (The 3 Critical Friction Points):**
-  1. **"Dead-end Thumbnail" (Thumbnail nổi góc màn hình bị thiếu tương tác một chạm):** Cửa sổ thumbnail sau chụp hiện tại chỉ có Copy/Save/Edit. Người dùng thiếu thao tác **Ghim nhanh (📌 Pin)** trực tiếp từ thumbnail, thiếu tính năng **Kéo-thả trực tiếp file ra ngoài (Drag-out to Slack/Discord/Gmail)** mà CleanShot X làm người dùng mê mẩn.
-  2. **Thiếu Kính lúp Pixel (Pixel Loupe) & Trích xuất màu HEX nhanh (`C`) khi Chụp vùng:** Khi kéo chọn vùng chụp (`Overlay.tsx`), dev và designer gặp khó khăn trong việc canh chỉnh từng pixel (pixel-perfect) vì thiếu kính lúp phóng to 4x–8x tại tâm trỏ chuột. Đồng thời không thể nhấn phím `C` để copy ngay mã màu HEX của điểm ảnh đang trỏ tới.
-  3. **Thiếu Command Palette (`Ctrl+K`) & Quick OCR:** Người dùng bàn phím chuyên nghiệp (Power users) phải dùng chuột click thanh công cụ hoặc nhớ quá nhiều phím tắt riêng lẻ thay vì 1 tổ hợp phím tập trung duy nhất (`Ctrl+K`).
-* **3 Cơ hội Vàng Bứt phá (Top 3 Golden Moats):**
-  1. **Smart Drag-Out Thumbnail:** Biến thumbnail nổi thành "con thoi" kéo-thả file ảnh/video thẳng vào bất kỳ cửa sổ nào mà không cần bấm lưu ra ổ đĩa.
-  2. **Precision Pixel Loupe & Eyedropper:** Tích hợp kính lúp phóng đại quang học + phím `C` lấy màu HEX tức thì ngay trong màn hình chọn vùng chụp.
-  3. **1-Click Social Mockup / Apple-Shot Beautifier:** Biến ảnh chụp thô thành ảnh card sản phẩm tuyệt đẹp (tự động căn padding, bo góc mềm, đổ bóng 3D, nền gradient Apple style) chỉ với 1 cú click.
+**Điểm trưởng thành: 8,0 / 10** (hoàn thiện tính năng 9 · độ tin cậy 7 · hoàn thiện UX 8 · hiệu năng/tài nguyên 7 · bảo mật 8).
 
----
+**3 tử huyệt**
+1. **Độ tin cậy của tính năng mới thấp hơn độ rộng của nó.** Chạy thật bắt được 2 lỗi Critical (đơ app khi mở Webcam Bubble; sập Lịch sử khi chọn mục) và 3 lỗi High/Medium, cả hai lỗi Critical đều **qua mặt build, type-check và unit test**. Repo chưa có E2E, chưa có lint hooks → rủi ro tái phát cao.
+2. **Tài nguyên.** Bản đang cài nhàn rỗi ~124 MB nhưng sau khi dùng Editor + OCR + video đo được **1,2–1,9 GB** (9 webview prewarm, 2 overlay/màn hình, WASM OCR). Chưa chứng minh được bộ nhớ được trả lại khi đóng cửa sổ.
+3. **Tính năng bảo mật "hứa nhiều, giữ ít".** Che nhạy cảm tự động chỉ che 1/4 vùng trên ảnh thử (đã sửa trong 3.9.2), OCR tiếng Việt "tự thêm dấu" vào email/ID ASCII → mọi tính năng dựa trên OCR (Live Text, redact, Text Grab) đều bị ảnh hưởng.
 
-## 2. BẢNG ĐỐI CHIẾU HIỆN TRẠNG (SNAPDOC vs TIER-1 BENCHMARKS)
+**3 cơ hội vàng**
+1. **Thư viện tìm kiếm được bằng nội dung** (OCR ảnh + lời thoại video, hoàn toàn offline) — hiện cả hai dữ liệu đã được tạo ra nhưng *bị vứt đi* sau mỗi phiên.
+2. **Quay màn hình kiểu Loom/Screen Studio chạy local**: đã có auto-zoom, con trỏ mượt, phụ đề, webcam bubble, chia sẻ Drive — thiếu mảnh ghép là ghép webcam vào chính video và chia sẻ liền mạch.
+3. **Redact thông minh cho video** (OCR lấy mẫu khung hình → làm mờ email/token trong bản quay) — đối thủ chưa có, mà người quay hướng dẫn kỹ thuật rất cần.
 
-| Tiêu chí Trải nghiệm | SnapDoc v3.8.4 | CleanShot X (macOS) | ShareX (Windows) | Screen Studio / Snagit | Đánh giá & Khoảng cách |
-|---|:---:|:---:|:---:|:---:|---|
-| **Cụm điều khiển Chụp/Quay** | ✅ Đã tách biệt rõ màu sắc & icon máy quay | ✅ Rất tinh tế | ⚠️ Quá nhiều menu con phức tạp | ✅ Tinh gọn | **Đạt chuẩn Tier-1** |
-| **Ghim ảnh màn hình (Pin)** | ✅ Đã có (Opacity, Zoom, Drag, Copy, Editor + History) | ✅ Ghim nhanh từ thumbnail | ⚠️ Ghim đơn giản | ❌ Không có | **Rất tốt** (Chỉ thiếu ghim trực tiếp từ popup Thumbnail) |
-| **Empty State & Undo Delete** | ✅ Smart Empty State + Toast Undo 5s | ✅ Có | ❌ Xóa mất luôn | ⚠️ Có confirm | **Đạt chuẩn Tier-1** |
-| **Kéo-thả file từ Thumbnail (Drag-out)** | ❌ Chưa có | ✅ Cực mạnh (90% user dùng) | ⚠️ Menu chuột phải | ❌ Không có | **Khoảng cách lớn về TTV (Time-to-Value)** |
-| **Kính lúp Pixel (Pixel Loupe) khi chụp** | ❌ Chưa có | ✅ Có zoom 4x + kích thước px | ✅ Có zoom 8x + mã màu HEX | ✅ Có kính lúp | **Tử huyệt khi làm việc với UI/Dev** |
-| **Lấy mã màu nhanh (Eyedropper / Press C)** | ❌ Chưa có | ✅ Bấm C copy HEX | ✅ Có Color Picker chuyên sâu | ⚠️ Công cụ rời | **Cần bổ sung ngay** |
-| **Command Palette (`Ctrl+K`)** | ❌ Chưa có | ⚠️ Quick search menu | ❌ Không có | ⚠️ Có search | **Cơ hội vượt trội so với ShareX** |
-| **Tự động bo nền đẹp (1-Click Beautify)** | ⚠️ Đã có công cụ nền G, nhưng chưa có preset 1-click | ✅ Đẹp xuất sắc | ❌ Phải chỉnh thủ công | ✅ Tự động hoàn toàn | **Cần thêm nút bấm 1-click preset** |
-| **Tự động làm mờ nhạy cảm (Smart Redact)** | ⚠️ Đã có Blur/Pixelate/Solid thủ công | ⚠️ Thủ công | ❌ Thủ công | ✅ Tự động nhận diện Email/Credit Card | **Lợi thế lớn cho Snagit** |
+## 2. Hiện trạng so với Tier-1
 
----
+| Năng lực | SnapDoc 3.9.x | CleanShot X | ShareX | Snagit | Screen Studio | Loom |
+|---|---|---|---|---|---|---|
+| Chụp vùng/cửa sổ/cuộn, pin, loupe, eyedropper | **Có (đủ)** | Có | Có | Có | – | – |
+| Annotation + beautify 1-chạm + code block | **Có** | Có | Cơ bản | Mạnh | – | – |
+| OCR + Live Text offline, tiếng Việt | **Có (mạnh nhất nhóm)**, nhưng chưa chính xác với ID ASCII | Có | Có | Có | – | – |
+| Auto-redact | Có (email/token/SĐT/thẻ) | Thủ công | Thủ công | Có | – | – |
+| Quay màn hình + HUD phím/click + auto-zoom | **Có** | Có | Cơ bản | Có | **Chuẩn mực** | Không auto-zoom |
+| Phụ đề AI **offline**, khớp bản cắt | **Có — duy nhất chạy hoàn toàn local** | Không | Không | Không | Không | Có (cloud, 50+ ngôn ngữ) |
+| Webcam | Cửa sổ nổi (chụp gián tiếp) | Ghép vào video | – | Có | Ghép + auto-framing | **Chuẩn mực** |
+| Chia sẻ link | Drive cá nhân, thủ công, chỉ trong History | Cloud riêng | 70+ dịch vụ | Screencast | Có | **Lõi sản phẩm** |
+| Tìm kiếm theo nội dung | Không | Có (cơ bản) | Không | Không | Không | Có (transcript) |
+| Cài đặt/nhẹ | ~150 MB installer, 124 MB RAM nhàn rỗi | – | Rất nhẹ | Nặng | Nặng | Cloud |
 
-## 3. DANH MỤC ĐỀ XUẤT TÍNH NĂNG MỚI (3 TẦNG HÀNH ĐỘNG)
+## 3. Đề xuất theo 3 tầng (bám codebase hiện có)
 
-### 🚀 Tầng 1: Quick Wins (Triển khai nhanh 1–2 ngày)
+### Tầng 1 — Quick wins (1–2 ngày mỗi mục)
+1. **Chặn lỗi loại này quay lại:** thêm `eslint-plugin-react-hooks`; đưa `scripts/e2e/` vào CI (chạy smoke 5 phút); quy ước "lệnh tạo cửa sổ phải `async`" kèm test.
+2. **Dọn i18n:** đưa chuỗi cứng (tab Chia sẻ, Webcam, Palette) vào `locales/`; thống nhất "Thùng rác/Explorer" thay "Trash/Finder".
+3. **`Esc` xác nhận chữ thay vì huỷ** ở công cụ Chữ (`AnnotationStage.tsx`), đúng thói quen Snagit/Figma.
+4. **Gắn Command Palette toàn cục** (hiện chỉ ở Editor/Lịch sử): mount ở Capture Bar, thêm mục tray; thêm lệnh "Phụ đề cho video gần nhất", "Chia sẻ mục gần nhất".
+5. **OCR nhận biết ASCII:** token có `@`, `://`, `_`, hoặc toàn ký tự ASCII → chạy lại bằng model `eng` (hoặc bỏ dấu theo ngữ cảnh) trong `ocrService.processOcrResult`.
+6. **Webcam Bubble nhớ vị trí/kích thước** và tự bật khi bắt đầu quay (hook vào `record::start`) — dữ liệu hiện chỉ lưu `deviceId/mirror/shape`.
+7. **Toast "Đã copy link" + tuỳ chọn thư mục Drive riêng** cho Cloud Share (`drive.rs`: thêm `parents` khi upload).
 
-1. **Ghim nhanh (📌) & Sao chép nhanh trên Popup Thumbnail (`Thumbnail.tsx`):**
-   * *Nghiệp vụ:* Khi chụp ảnh xong, cửa sổ thumbnail nổi lên ở góc dưới màn hình trong 6s. Thêm ngay nút **`📌 Ghim`** vào thanh nút của thumbnail. Người dùng bấm 1 cái là ảnh biến thành cửa sổ nổi Pin to Screen ghim ngay trên màn hình để đối chiếu tài liệu mà không cần vào History hay mở Editor.
-   * *Độ khó:* Thấp (0.5 MD). Tái sử dụng trực tiếp `ipc.pinImage(src)` vừa hoàn thiện.
+### Tầng 2 — Nâng cấp chiến lược (3–5 ngày)
+1. **Phụ đề nâng cao:** timestamp từng từ (`--output-json-full`) để tô từng chữ (karaoke), mẫu kiểu chữ/vị trí, xuất `.vtt/.ass`, **dịch sang tiếng Anh** (`-tr`), cắt khoảng lặng (VAD) — mọi thứ chỉ là thêm cờ cho `whisper-cli` + UI trong `CaptionsModal`.
+2. **Chia sẻ video + tiến độ + huỷ** (hiện chỉ upload nguyên khối, không có % — nên dùng resumable upload của Drive API).
+3. **Ghép webcam vào video** bằng FFmpeg overlay (khung tròn, bo góc) thay vì dựa vào cửa sổ nổi; cho phép chỉnh vị trí ở `VideoTrimmer`.
+4. **Giải phóng bộ nhớ:** thu hồi (destroy/reload) webview nặng sau N phút không dùng; không prewarm overlay cho màn hình phụ cho đến lần chụp đầu.
 
-2. **Kính lúp ngắm Pixel & Bắt mã màu (`Overlay.tsx`):**
-   * *Nghiệp vụ:* Khi người dùng rê chuột chọn vùng chụp:
-     * Hiển thị một khung tròn phóng đại 4x xung quanh hoặc cạnh trỏ chuột, thể hiện rõ từng pixel và tâm ngắm chữ thập.
-     * Hiển thị mã màu HEX tại tâm ngắm (ví dụ `#4F46E5` / `rgb(79, 70, 229)`).
-     * Phím tắt `C`: Nhấn `C` lập tức copy mã màu HEX vào Clipboard và phát thông báo "Đã sao chép mã màu #HEX", không cần kết thúc lượt chụp.
-   * *Độ khó:* Trung bình (1 MD). Render canvas 15x15 pixel scale lên canvas tròn 90px từ ảnh nền snapshot đã capture sẵn trong Overlay.
+### Tầng 3 — Killer moats
+1. **"Spotlight cho mọi thứ bạn đã chụp":** lưu OCR và transcript vào SQLite **FTS5** (đã có `rusqlite` bundled); ô tìm kiếm trong Lịch sử trả về cả ảnh lẫn **đúng giây trong video** nơi từ đó được nói. Offline, riêng tư — Loom/CleanShot không làm được.
+2. **Redact trong video:** lấy mẫu khung hình → OCR → dùng lại `sensitiveDetector` → làm mờ theo thời gian khi xuất (`encoder::trim` đã có hạ tầng overlay).
+3. **Tóm tắt/chương tự động từ transcript** bằng LLM cục bộ (sidecar `llama.cpp`, cùng mô hình tải-có-kiểm-tra-SHA như Whisper) → "Loom AI không cần cloud".
+4. **Camera thông minh:** nền mờ/auto-framing theo mặt cho Webcam Bubble (ONNX runtime đã có trong `public/onnxruntime`).
 
-3. **1-Click Beautifier Preset cho Editor (`Toolbar.tsx`):**
-   * *Nghiệp vụ:* Hiện tại SnapDoc đã có sẵn tính năng nền `tool === 'background'`, bo góc và đổ bóng. Thêm 1 nút bấm nhanh **"✨ Làm đẹp (Beautify)"** trên thanh công cụ Editor:
-     * 1 click tự động áp dụng preset chuẩn Twitter/ProductHunt: Nền gradient hoàng hôn tím-hồng (hoặc xanh công nghệ), padding 32px, bo góc 12px, đổ bóng mềm 3D `0 20px 40px rgba(0,0,0,0.3)`.
-   * *Độ khó:* Thấp (0.5 MD). Tận dụng toàn bộ logic của `background` trong `model.ts`.
+## 4. Lộ trình gợi ý
 
----
+`Tuần 1`: Tầng 1 (1–7) + đưa E2E vào CI → ổn định. `Tuần 2–3`: Tầng 2 (1, 3, 4). `Tháng sau`: Tầng 3 mục 1 (tìm kiếm FTS) rồi mục 2.
 
-### 🌟 Tầng 2: Strategic Upgrades (Nâng cấp Chiến lược 3–5 ngày)
+## 5. Tự đánh giá lại (Self-improvement)
 
-4. **Command Palette toàn cục (`Ctrl+K`):**
-   * *Nghiệp vụ:* Nhấn `Ctrl+K` ở bất kỳ đâu trong app (hoặc qua phím tắt toàn cục) để mở thanh tìm kiếm thông minh dạng Spotlight/Raycast:
-     * Gõ "chụp" $\rightarrow$ Hiện: Chụp toàn màn, Chụp cửa sổ, Chụp vùng, Chụp cuộn.
-     * Gõ "quay" $\rightarrow$ Hiện: Quay video, Quay cửa sổ, Bật tắt tiếng micro.
-     * Gõ "ghim" $\rightarrow$ Hiện: Ghim ảnh chụp gần nhất.
-     * Gõ "lịch sử" $\rightarrow$ Mở thư viện History.
-     * Hỗ trợ tìm kiếm theo tên item trong History (`recent captures`).
-   * *Độ khó:* 2 MD.
-
-5. **Kéo-thả trực tiếp File từ Thumbnail (Native Drag-Out to External Apps):**
-   * *Nghiệp vụ:* Khi thumbnail nổi lên góc màn hình, người dùng chỉ cần nhấn giữ chuột trái vào ảnh thumbnail và kéo thả thẳng sang Discord, Slack, trình duyệt web, Telegram hoặc cửa sổ thư mục Explorer. File ảnh PNG thực tế sẽ được thả vào ứng dụng đích mà không cần qua Clipboard hay mở thư mục Downloads.
-   * *Độ khó:* 2 MD (Sử dụng plugin `tauri-plugin-drag` hoặc Windows OLE IDataObject native trong Rust).
-
-6. **Tự động nhận diện & Che mờ vùng nhạy cảm (Smart Redact AI / Regex Pattern):**
-   * *Nghiệp vụ:* Khi chụp tài liệu/giao diện chứa Email, Số điện thoại, Mã API Key (bắt đầu bằng `sk-`, `ghp_`), Thẻ tín dụng:
-     * Nút "Tự động che mờ" trong Editor tự động quét qua OCR/Canvas text hoặc nhận diện hình chữ nhật để tạo sẵn các layer `BlurAnn` hoặc `solidColor` che kín thông tin nhạy cảm.
-   * *Độ khó:* 3 MD.
-
----
-
-### 💎 Tầng 3: Killer Moats (Rào cản Cạnh tranh Áp đảo)
-
-7. **Windows Native OCR Text Grabber (Sao chép văn bản siêu tốc từ màn hình):**
-   * *Nghiệp vụ:* Một phím tắt riêng `Ctrl+Shift+T`: Kéo chọn một vùng màn hình bất kỳ $\rightarrow$ Không lưu ảnh mà tự động bóc tách 100% chữ tiếng Việt/tiếng Anh/mã code trong vùng đó và dán thẳng vào Clipboard. Hỗ trợ giữ nguyên định dạng bảng biểu và code block.
-   * *Công nghệ:* Tận dụng trực tiếp API Windows native `Windows.Media.Ocr` (sẵn có trên mọi máy Windows 10/11, không tốn thêm byte dung lượng nào, không cần nạp thư viện tesseract nặng hàng chục MB).
-
-8. **Cursor Smoothing & Dynamic Zoom Effect cho Video (Screen Studio cho Windows):**
-   * *Nghiệp vụ:* Screen Studio tạo nên cơn sốt trên macOS vì video quay màn hình có chuột di chuyển uốn lượn mượt mà (smooth bezier cursor) và tự động zoom cận cảnh khi click chuột.
-   * *Thế mạnh của SnapDoc:* SnapDoc đã có sẵn `mouseFocusEngine.ts` và cơ chế lưu metadata click/chuột. Việc bổ sung thuật toán nội suy đường cong Bezier cho con trỏ chuột khi xuất video sẽ đưa SnapDoc trở thành phần mềm quay màn hình số 1 trên nền tảng Windows.
-
----
-
-## 4. LỘ TRÌNH THỰC THI GỢI Ý (ACTIONABLE ROADMAP)
-
-```mermaid
-flowchart TD
-    subgraph Phase1["Giai đoạn 1: Hoàn thiện Quick Wins (1 - 2 ngày)"]
-        Q1["Ghim nhanh 📌 trực tiếp từ Popup Thumbnail"]
-        Q2["Kính lúp ngắm Pixel & Bắt mã màu C trong Overlay"]
-        Q3["1-Click Beautifier Preset trong Editor Toolbar"]
-    end
-
-    subgraph Phase2["Giai đoạn 2: Nâng tầm Trải nghiệm (3 - 5 ngày)"]
-        S1["Command Palette Ctrl+K điều hướng siêu tốc"]
-        S2["Native Drag-Out Thumbnail thả thẳng vào Slack/Discord"]
-    end
-
-    subgraph Phase3["Giai đoạn 3: Killer Moats độc bản"]
-        M1["Windows Native OCR Text Grabber Ctrl+Shift+T"]
-        M2["Cursor Bezier Smoothing cho Video Trimmer"]
-    end
-
-    Phase1 --> Phase2 --> Phase3
-```
-
-### Khuyến nghị kỹ thuật cho bước kế tiếp:
-* **Ưu tiên số 1:** Triển khai **Ghim nhanh 📌 trên Popup Thumbnail** (`Thumbnail.tsx`) vì đã có sẵn nền tảng `ipc.pinImage`. Người dùng sẽ thấy sự tiện lợi tức thì: chụp xong bấm ghim ngay, không cần vào Editor.
-* **Ưu tiên số 2:** Thêm **Kính lúp Pixel & Phím `C` copy màu** vào `Overlay.tsx`. Mọi lập trình viên và designer dùng SnapDoc sẽ lập tức coi SnapDoc là công cụ không thể thay thế vì tính năng này.
+- Đề xuất có bám codebase? Có: mỗi mục trỏ tới file/hạ tầng sẵn có (whisper-cli flags, `encoder::trim`, `rusqlite`, `onnxruntime`).
+- Điểm mù tự phát hiện: tính năng "xong" theo `tsc`/unit test chưa đồng nghĩa chạy được — chuẩn đánh giá phải gồm **chạy thật từng màn hình**. Mô thức UX học thêm: *Esc = xác nhận, không huỷ* với mọi trình soạn thảo trên canvas; *trạng thái chờ quyền hệ thống phải có lời giải thích*.
