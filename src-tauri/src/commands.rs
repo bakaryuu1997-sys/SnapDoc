@@ -1307,8 +1307,20 @@ pub fn get_video_mouse_telemetry(
 /// - Nạp vào PendingVideo với duration_ms, history_id, thumb_path chuẩn xác.
 /// - Mở cửa sổ Editor để người dùng xem và chỉnh sửa với đầy đủ tính năng.
 pub fn open_video_file_path_sync(app: &AppHandle, path: String) -> Result<(), String> {
-    let file_path = std::path::Path::new(&path);
-    if !file_path.exists() {
+    let (record, _is_new) = ingest_video_path_sync(app, &path)?;
+    open_video_record_in_editor(app, &record)
+}
+
+/// Đưa 1 video từ ngoài vào Library (KHÔNG mở Editor): kiểm tra đuôi, remux
+/// .mkv/.avi sang mp4, cấp asset scope cho đúng file, ingest với
+/// `capture_mode="imported"` nếu chưa có. Trả `(bản ghi, vừa tạo mới?)`.
+/// Dùng chung cho kéo-thả / "Mở video…" / MCP `import_video`.
+pub fn ingest_video_path_sync(
+    app: &AppHandle,
+    path: &str,
+) -> Result<(crate::history::model::HistoryRecord, bool), String> {
+    let file_path = std::path::Path::new(path);
+    if !file_path.is_file() {
         return Err(format!("File không tồn tại: {}", path));
     }
 
@@ -1335,7 +1347,7 @@ pub fn open_video_file_path_sync(app: &AppHandle, path: String) -> Result<(), St
     let record = match crate::history::find_history_item_by_asset_path_sync(app, &effective_str)? {
         Some(r) => {
             eprintln!("[SnapDoc] Video đã có trong History: id={}", r.id);
-            r
+            (r, false)
         }
         None => {
             // Trích xuất metadata thời lượng và kích thước bằng FFmpeg
@@ -1353,20 +1365,32 @@ pub fn open_video_file_path_sync(app: &AppHandle, path: String) -> Result<(), St
             );
 
             // Ingest vào History DB
-            crate::history::ingest_video(
-                app,
-                &effective_path,
-                meta.width,
-                meta.height,
-                meta.duration_ms,
-                "imported",
-            )?
+            (
+                crate::history::ingest_video(
+                    app,
+                    &effective_path,
+                    meta.width,
+                    meta.height,
+                    meta.duration_ms,
+                    "imported",
+                )?,
+                true,
+            )
         }
     };
+    let (record, is_new) = record;
     if record.asset_path != effective_str {
         crate::record::allow_asset_file(app, std::path::Path::new(&record.asset_path));
     }
 
+    Ok((record, is_new))
+}
+
+/// Mở 1 bản ghi video đã có trong Library vào Editor (nạp `pending_video` + mở/làm mới cửa sổ).
+pub fn open_video_record_in_editor(
+    app: &AppHandle,
+    record: &crate::history::model::HistoryRecord,
+) -> Result<(), String> {
     let pv = PendingVideo {
         path: record.asset_path.clone(),
         width: record.width,

@@ -7,6 +7,7 @@ mod flow;
 mod history;
 mod hotkey;
 mod input;
+mod mcp;
 mod notify;
 mod permissions;
 mod record;
@@ -64,6 +65,14 @@ fn init_history(handle: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Cầu nối MCP stdio↔HTTP: chạy như tiến trình dòng lệnh, KHÔNG khởi động Tauri/cửa sổ.
+    {
+        let argv: Vec<String> = std::env::args().collect();
+        if argv.iter().any(|a| a == "--mcp-stdio") {
+            std::process::exit(mcp::bridge::run(&argv));
+        }
+    }
+
     #[cfg(target_os = "windows")]
     {
         // Kích hoạt SharedArrayBuffer và WebAssembly đa luồng cho WebView2
@@ -271,6 +280,12 @@ pub fn run() {
             commands::copy_gif_to_clipboard,
             history::commands::save_gif_to_history,
             commands::get_video_mouse_telemetry,
+            mcp::mcp_get_state,
+            mcp::mcp_set_enabled,
+            mcp::mcp_set_write,
+            mcp::mcp_regenerate_token,
+            mcp::mcp_audit_list,
+            mcp::mcp_audit_clear,
         ])
 
         .setup(|app| {
@@ -344,6 +359,8 @@ pub fn run() {
             // Lỗi init KHÔNG chặn khởi động app — chỉ tắt tính năng Library
             // (mọi command History sẽ trả lỗi rõ ràng qua `try_state`).
             init_history(&handle);
+            // MCP server cho AI agent (mặc định tắt; chỉ chạy khi người dùng bật trong Cài đặt).
+            mcp::init(&handle);
 
             // Tự động dọn Trash quá hạn 30 ngày — thread riêng, không chặn
             // khởi động, cùng convention với cleanup_stale_temp bên dưới. Xem

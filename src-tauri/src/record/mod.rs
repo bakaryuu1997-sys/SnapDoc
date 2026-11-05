@@ -229,7 +229,7 @@ fn audio_source_setting(s: &serde_json::Value) -> AudioSource {
 
 /// Thư mục lưu video: `saveDir` đã cấu hình trong Settings, hoặc
 /// `Pictures/SnapDoc` mặc định — cùng quy tắc với ảnh chụp.
-fn resolve_save_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn resolve_save_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let custom_dir = settings(app)
         .get("saveDir")
         .and_then(|v| v.as_str())

@@ -13,7 +13,7 @@ fn state(app: &AppHandle) -> Result<tauri::State<'_, HistoryState>, String> {
 
 // ── Logic đồng bộ (chạy trong spawn_blocking) ──────────────────────────────
 
-fn list_history_sync(app: &AppHandle, filter: HistoryFilter) -> Result<HistoryPage, String> {
+pub(crate) fn list_history_sync(app: &AppHandle, filter: HistoryFilter) -> Result<HistoryPage, String> {
     let st = state(app)?;
     let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
 
@@ -86,7 +86,7 @@ fn grant_media_asset(app: &AppHandle, rec: &HistoryRecord) {
     }
 }
 
-fn get_history_item_sync(app: &AppHandle, id: &str) -> Result<HistoryRecord, String> {
+pub(crate) fn get_history_item_sync(app: &AppHandle, id: &str) -> Result<HistoryRecord, String> {
     let st = state(app)?;
     let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
     conn.query_row("SELECT * FROM history WHERE id = ?1", [id], HistoryRecord::from_row)
@@ -121,7 +121,7 @@ pub fn relink_video_asset_sync(app: &AppHandle, old_path: &str, new_path: &str) 
     .map_err(|e| format!("Cập nhật đường dẫn video thất bại: {e}"))
 }
 
-fn delete_history_item_sync(app: &AppHandle, id: &str) -> Result<(), String> {
+pub(crate) fn delete_history_item_sync(app: &AppHandle, id: &str) -> Result<(), String> {
     let st = state(app)?;
     let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
     conn.execute(
@@ -132,7 +132,7 @@ fn delete_history_item_sync(app: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn restore_history_item_sync(app: &AppHandle, id: &str) -> Result<(), String> {
+pub(crate) fn restore_history_item_sync(app: &AppHandle, id: &str) -> Result<(), String> {
     let st = state(app)?;
     let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
     conn.execute("UPDATE history SET deleted_at = NULL WHERE id = ?1", [id])
@@ -275,7 +275,7 @@ pub fn purge_old_trash(app: &AppHandle) -> Result<u32, String> {
     delete_trash_items_batch(app, "deleted_at IS NOT NULL AND deleted_at < ?1", &[&cutoff])
 }
 
-fn rename_history_item_sync(app: &AppHandle, id: &str, title: &str) -> Result<(), String> {
+pub(crate) fn rename_history_item_sync(app: &AppHandle, id: &str, title: &str) -> Result<(), String> {
     let st = state(app)?;
     let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
     conn.execute(
@@ -329,7 +329,7 @@ fn load_asset(rec: &HistoryRecord) -> Result<(Vec<u8>, String, bool), String> {
 /// Bytes để đưa vào clipboard / xuất ra ngoài: bản ĐÃ GHÉP annotation
 /// (`preview.png`), không phải nền sạch — đúng cái user thấy trên màn hình.
 /// Ảnh PNG cũ thì bản thân file đã là "cái thấy được".
-fn load_asset_preview(rec: &HistoryRecord) -> Result<Vec<u8>, String> {
+pub(crate) fn load_asset_preview(rec: &HistoryRecord) -> Result<Vec<u8>, String> {
     let path = std::path::Path::new(&rec.asset_path);
     if crate::snapdoc_file::is_snapdoc(path) {
         if let Some(bytes) =
@@ -369,7 +369,7 @@ pub fn open_latest_capture_in_editor_sync(app: &AppHandle) -> Result<(), String>
     }
 }
 
-fn open_history_item_in_editor_sync(app: &AppHandle, id: &str) -> Result<(), String> {
+pub(crate) fn open_history_item_in_editor_sync(app: &AppHandle, id: &str) -> Result<(), String> {
     let rec = get_history_item_sync(app, id)?;
     if rec.deleted_at.is_some() {
         return Err("Không thể mở item đang ở Trash — hãy Restore trước".to_string());
@@ -653,7 +653,7 @@ fn list_items_with_draft_sync(app: &AppHandle) -> Result<Vec<String>, String> {
 /// cơ mất bản gốc). File mới nằm ở `saveDir` giống video quay bình thường
 /// (`record::new_output_path`, KHÔNG copy vào `library/assets` — theo đúng
 /// quy ước hiện có cho video, xem `history::ingest_video`).
-fn trim_history_video_sync(
+pub(crate) fn trim_history_video_sync(
     app: &AppHandle,
     id: &str,
     keep_ranges_ms: &[(i64, i64, f64)],
@@ -824,7 +824,7 @@ fn trim_history_video_sync(
 /// (`trim_history_video_sync`). Cùng pattern trim→tmp file cùng thư
 /// mục→rename đè mà `overwrite_history_video_sync` này thay thế cho
 /// `trim_pending_recording` cũ (đã xoá cùng `record-review`/pending-recording).
-fn overwrite_history_video_sync(
+pub(crate) fn overwrite_history_video_sync(
     app: &AppHandle,
     id: &str,
     keep_ranges_ms: &[(i64, i64, f64)],
