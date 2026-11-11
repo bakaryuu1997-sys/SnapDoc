@@ -243,11 +243,53 @@ fn stored_captions(st: &McpState, id: &str) -> Result<(String, Vec<CaptionSegmen
     Ok((lang, segs))
 }
 
+
+/// Hộp thoại OK/Cancel gốc của Windows (`MessageBoxW`, nổi trên cùng, mặc định chọn "Cancel").
+/// FAIL-CLOSED: chỉ trả `true` khi người dùng bấm đúng "OK"; Esc, đóng hộp thoại, lỗi, hết giờ → `false`.
+/// Cố ý KHÔNG dùng Yes/No: hộp thoại cướp focus nên một phím "Y" người dùng vô tình gõ lúc đó sẽ
+/// bấm "Yes" (E2E đã gặp: bị cho phép mà không ai bấm). OK/Cancel không có phím tắt chữ cái.
+/// (Không dùng plugin dialog của Tauri: bản thử E2E cho thấy `show()` có thể không hiện hộp thoại
+/// mà vẫn trả về "cho phép" — mở cửa cho agent. Đừng đổi lại nếu chưa chạy s13_mcp.mjs.)
+#[cfg(windows)]
+pub fn native_confirm(title: &str, msg: &str, timeout: Duration) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        FindWindowW, MessageBoxW, PostMessageW, IDOK, MB_DEFBUTTON2, MB_ICONWARNING, MB_OKCANCEL, MB_SETFOREGROUND, MB_TOPMOST, WM_CLOSE,
+    };
+    let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+    let (t, m) = (wide(title), wide(msg));
+    let t_thread = t.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new().name("mcp-confirm".into()).spawn(move || {
+        let r = unsafe { MessageBoxW(std::ptr::null_mut(), m.as_ptr(), t_thread.as_ptr(), MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST | MB_SETFOREGROUND) };
+        let _ = tx.send(r == IDOK);
+    });
+    if spawned.is_err() {
+        return false;
+    }
+    match rx.recv_timeout(timeout) {
+        Ok(v) => v,
+        Err(_) => {
+            // Hết giờ: đóng hộp thoại còn treo (kết quả đã chốt là "từ chối").
+            unsafe {
+                let h = FindWindowW(std::ptr::null(), t.as_ptr());
+                if !h.is_null() {
+                    PostMessageW(h, WM_CLOSE, 0, 0);
+                }
+            }
+            false
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn native_confirm(_title: &str, _msg: &str, _timeout: Duration) -> bool {
+    false // chưa hỗ trợ nền tảng này: từ chối mặc định
+}
+
 // ───────────────────────── Host ─────────────────────────
 
 impl Host for AppHost {
     fn confirm(&self, client: &str, tool: &str, args: &Value) -> bool {
-        use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
         let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let target = match hc::get_history_item_sync(&self.app, id) {
             Ok(r) => format!(
@@ -265,17 +307,7 @@ impl Host for AppHost {
         };
         let who = if client.is_empty() { "một AI agent" } else { client };
         let msg = format!("{who} (qua MCP) yêu cầu:\n\n{action}\n\n{target}\n\nBạn có cho phép không?");
-        let (tx, rx) = std::sync::mpsc::channel();
-        self.app
-            .dialog()
-            .message(msg)
-            .title("SnapDoc — AI agent xin xác nhận")
-            .kind(MessageDialogKind::Warning)
-            .buttons(MessageDialogButtons::OkCancelCustom("Cho phép".into(), "Từ chối".into()))
-            .show(move |ok| {
-                let _ = tx.send(ok);
-            });
-        rx.recv_timeout(Duration::from_secs(120)).unwrap_or(false)
+        native_confirm("SnapDoc — AI agent xin xác nhận", &msg, Duration::from_secs(120))
     }
 
     fn exec(&self, tool: &str, args: &Value) -> Out {
