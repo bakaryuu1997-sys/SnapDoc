@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="guide-version" content="{{version}}">
+<title>SnapDoc — Hướng dẫn sử dụng</title>
+<style>
+:root{
+  --bg:#f6f7fb; --panel:#ffffff; --ink:#1c2230; --muted:#5b6478; --line:#e3e6ef;
+  --c1:#2563eb; --c2:#7c3aed; --c3:#db2777; --c4:#ea580c; --c5:#059669; --c6:#0891b2; --c7:#ca8a04; --c8:#475569;
+  --tip-bg:#e8f1ff; --tip-bd:#2563eb; --warn-bg:#fff4dd; --warn-bd:#d97706; --ok-bg:#e3f8ec; --ok-bd:#059669; --bad-bg:#fde8ea; --bad-bd:#dc2626;
+  --kbd-bg:#eef0f6; --code-bg:#f0f2f8; --shadow:0 1px 3px rgba(20,30,60,.08),0 8px 24px rgba(20,30,60,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1218; --panel:#171b24; --ink:#e8ebf3; --muted:#9aa3b8; --line:#2a3040;
+    --c1:#60a5fa; --c2:#a78bfa; --c3:#f472b6; --c4:#fb923c; --c5:#34d399; --c6:#22d3ee; --c7:#facc15; --c8:#94a3b8;
+    --tip-bg:#13233f; --tip-bd:#60a5fa; --warn-bg:#33270f; --warn-bd:#f59e0b; --ok-bg:#0f2b20; --ok-bd:#34d399; --bad-bg:#35151a; --bad-bd:#f87171;
+    --kbd-bg:#242a38; --code-bg:#1f2431; --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+a{color:var(--c1)}
+header.top{position:sticky;top:0;z-index:50;background:var(--panel);border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+.top-in{max-width:1280px;margin:auto;padding:10px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.brand{font-weight:800;font-size:18px;letter-spacing:.2px}
+.brand small{font-weight:600;color:var(--muted);margin-left:6px}
+.search{flex:1;min-width:180px;max-width:360px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:14px}
+.tools{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+button.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 11px;border-radius:9px;font-size:13px;cursor:pointer;font-weight:600}
+button.btn:hover{border-color:var(--c1);color:var(--c1)}
+button.btn.on{background:var(--c1);border-color:var(--c1);color:#fff}
+button.btn.danger:hover{border-color:var(--bad-bd);color:var(--bad-bd)}
+.layout{max-width:1280px;margin:auto;padding:20px;display:grid;grid-template-columns:250px minmax(0,1fr);gap:26px}
+nav.toc{position:sticky;top:78px;align-self:start;max-height:calc(100vh - 96px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+nav.toc b{display:block;font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin:2px 8px 8px}
+nav.toc a{display:flex;gap:8px;align-items:center;text-decoration:none;color:var(--ink);padding:6px 8px;border-radius:8px;font-size:14px;border-left:3px solid transparent}
+nav.toc a:hover{background:var(--bg)}
+nav.toc a.active{background:var(--bg);font-weight:700;border-left-color:var(--acc,var(--c1))}
+nav.toc a i{font-style:normal;width:20px;text-align:center}
+.hero{background:linear-gradient(135deg,#2563eb,#7c3aed 55%,#db2777);color:#fff;border-radius:18px;padding:28px 30px;box-shadow:var(--shadow);margin-bottom:22px}
+.hero h1{margin:0 0 6px;font-size:30px;line-height:1.25}
+.hero p{margin:6px 0 0;opacity:.95;max-width:720px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.chip{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);padding:4px 11px;border-radius:999px;font-size:13px;font-weight:600}
+section.sec{--acc:var(--c1);background:var(--panel);border:1px solid var(--line);border-top:5px solid var(--acc);border-radius:16px;padding:22px 26px;margin-bottom:22px;box-shadow:var(--shadow);position:relative}
+section.sec[data-c="2"]{--acc:var(--c2)} section.sec[data-c="3"]{--acc:var(--c3)} section.sec[data-c="4"]{--acc:var(--c4)}
+section.sec[data-c="5"]{--acc:var(--c5)} section.sec[data-c="6"]{--acc:var(--c6)} section.sec[data-c="7"]{--acc:var(--c7)} section.sec[data-c="8"]{--acc:var(--c8)}
+section.sec>h2{margin:0 0 4px;font-size:25px;color:var(--acc);line-height:1.3}
+section.sec>h2 .ico{margin-right:8px}
+.lead{color:var(--muted);margin:2px 0 14px}
+h3{font-size:18px;margin:22px 0 6px;padding-left:10px;border-left:4px solid var(--acc)}
+h4{font-size:15px;margin:14px 0 4px;color:var(--acc);text-transform:uppercase;letter-spacing:.5px}
+p{margin:8px 0} ul,ol{margin:8px 0;padding-left:24px} li{margin:4px 0}
+kbd{background:var(--kbd-bg);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 7px;font:600 12.5px/1.6 "Cascadia Mono",Consolas,monospace;white-space:nowrap}
+code{background:var(--code-bg);border-radius:6px;padding:1px 6px;font:13px Consolas,monospace}
+.b{color:var(--acc);font-weight:700}
+.hl{background:linear-gradient(transparent 55%,color-mix(in srgb,var(--c7) 45%,transparent) 55%)}
+.menu{display:inline-block;background:var(--code-bg);border:1px solid var(--line);border-radius:6px;padding:0 8px;font-weight:600;font-size:14px}
+.note{border-left:5px solid var(--tip-bd);background:var(--tip-bg);border-radius:10px;padding:10px 14px;margin:14px 0}
+.note.warn{border-color:var(--warn-bd);background:var(--warn-bg)} .note.ok{border-color:var(--ok-bd);background:var(--ok-bg)} .note.bad{border-color:var(--bad-bd);background:var(--bad-bg)}
+.note>b:first-child{display:block;margin-bottom:2px}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14.5px;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+th{background:color-mix(in srgb,var(--acc) 14%,var(--panel));color:var(--ink);white-space:nowrap}
+tr:nth-child(even) td{background:color-mix(in srgb,var(--bg) 60%,transparent)}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps>li{counter-increment:s;position:relative;margin:10px 0;padding:10px 14px 10px 54px;background:var(--bg);border:1px solid var(--line);border-radius:12px}
+.steps>li::before{content:counter(s);position:absolute;left:12px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:var(--acc);color:#fff;font-weight:800;display:grid;place-items:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:12px 0}
+.card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--bg)}
+.card h5{margin:0 0 4px;font-size:15px;color:var(--acc)}
+figure{margin:16px 0}
+figure img{width:100%;max-width:880px;border-radius:12px;border:1px solid var(--line);box-shadow:var(--shadow);display:block}
+figcaption{font-size:13px;color:var(--muted);margin-top:6px}
+.diagram{margin:16px 0;overflow-x:auto;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:10px}
+.diagram svg{display:block;margin:auto;min-width:640px;max-width:100%;height:auto}
+.diagram text{fill:var(--ink);font:600 13px "Segoe UI",system-ui,sans-serif}
+.diagram text.e{font-size:24px}
+.diagram .s{fill:var(--muted);font-weight:500;font-size:11.5px}
+.diagram .box{fill:var(--panel);stroke:var(--acc,#2563eb);stroke-width:2.2}
+.bars{margin:12px 0}
+.bar{display:grid;grid-template-columns:150px 1fr 70px;gap:10px;align-items:center;margin:7px 0;font-size:14px}
+.bar .t{height:16px;background:var(--line);border-radius:8px;overflow:hidden}
+.bar .t>i{display:block;height:100%;border-radius:8px;background:var(--acc)}
+.bar span:last-child{color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+details{border:1px solid var(--line);border-radius:12px;padding:8px 14px;margin:10px 0;background:var(--bg)}
+summary{cursor:pointer;font-weight:700}
+footer.end{max-width:1280px;margin:0 auto 60px;padding:0 20px;color:var(--muted);font-size:13px}
+/* ── Chế độ sửa ── */
+.edtools{display:none;position:sticky;top:61px;z-index:40;background:var(--panel);border:1px solid var(--c1);border-radius:12px;padding:8px 10px;margin-bottom:14px;gap:6px;flex-wrap:wrap;align-items:center;box-shadow:var(--shadow)}
+body.editing .edtools{display:flex}
+.edtools select{padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.edtools .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+.secbar{display:none;position:absolute;top:10px;right:12px;gap:4px}
+body.editing .secbar{display:flex}
+.secbar button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;padding:3px 8px;cursor:pointer;font-size:13px}
+.secbar button.del:hover{border-color:var(--bad-bd);color:var(--bad-bd)}
+body.editing [contenteditable=true]{outline:1px dashed color-mix(in srgb,var(--c1) 40%,transparent);outline-offset:4px;border-radius:4px}
+body.editing [contenteditable=true]:focus{outline:2px solid var(--c1)}
+.addsec{display:none;width:100%;margin:0 0 22px;padding:14px;border:2px dashed var(--c1);background:transparent;color:var(--c1);border-radius:14px;font-size:15px;font-weight:700;cursor:pointer}
+body.editing .addsec{display:block}
+.hidden{display:none!important}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 16px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:100}
+#toast.show{opacity:1}
+@media (max-width:900px){.layout{grid-template-columns:1fr}nav.toc{position:static;max-height:none}.bar{grid-template-columns:110px 1fr 56px}}
+@media print{header.top,nav.toc,.edtools,.secbar,.addsec{display:none!important}.layout{display:block}section.sec{break-inside:avoid;box-shadow:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand">📖 SnapDoc<small>Hướng dẫn sử dụng · v{{version}}</small></div>
+    <input id="q" class="search" type="search" placeholder="🔎 Tìm trong hướng dẫn… (vd: phụ đề, OCR, phím tắt)">
+    <div class="tools">
+      <button class="btn" id="bEdit" title="Bật chế độ sửa: bấm vào chữ để sửa, thêm/xoá/di chuyển mục">✏️ Sửa nội dung</button>
+      <button class="btn" id="bSave" title="Tải về bản hướng dẫn đã sửa (.html)">💾 Tải bản đã sửa</button>
+      <button class="btn danger" id="bReset" title="Bỏ mọi chỉnh sửa, quay về bản gốc">↩️ Khôi phục bản gốc</button>
+      <button class="btn" onclick="window.print()" title="In hoặc lưu PDF">🖨️ In</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" id="toc" aria-label="Mục lục"><b>Mục lục</b></nav>
+<main>
+
+<div class="hero">
+  <h1>Chào mừng đến với SnapDoc 👋</h1>
+  <p>SnapDoc giúp bạn <b>chụp màn hình, quay video, chú thích, trích chữ (OCR), tạo phụ đề AI</b> và chia sẻ — tất cả chạy ngay trên máy bạn. Trang này hướng dẫn từ lần dùng đầu tiên đến các tính năng nâng cao.</p>
+  <div class="chips"><span class="chip">📸 Chụp ảnh</span><span class="chip">🎬 Quay video</span><span class="chip">🖍️ Chú thích</span><span class="chip">🔤 OCR</span><span class="chip">💬 Phụ đề AI</span><span class="chip">☁️ Chia sẻ Drive</span></div>
+</div>
+
+<div class="edtools" id="edtools">
+  <b style="color:var(--c1)">✏️ Đang sửa</b><span class="sep"></span>
+  <button class="btn" data-cmd="bold" title="Đậm"><b>B</b></button>
+  <button class="btn" data-cmd="italic" title="Nghiêng"><i>I</i></button>
+  <button class="btn" data-cmd="underline" title="Gạch chân"><u>U</u></button>
+  <button class="btn" data-cmd="insertUnorderedList" title="Danh sách">• Danh sách</button>
+  <label>Màu chữ <select id="fcolor"><option value="">—</option><option value="#dc2626">Đỏ</option><option value="#ea580c">Cam</option><option value="#ca8a04">Vàng</option><option value="#059669">Xanh lá</option><option value="#2563eb">Xanh dương</option><option value="#7c3aed">Tím</option><option value="#db2777">Hồng</option></select></label>
+  <button class="btn" id="bHl" title="Tô nổi phần chữ đang chọn">🖍️ Tô nổi</button>
+  <span class="sep"></span>
+  <button class="btn" data-note="">💡 + Mẹo</button>
+  <button class="btn" data-note="warn">⚠️ + Lưu ý</button>
+  <button class="btn" data-note="ok">✅ + Nên làm</button>
+  <button class="btn" data-note="bad">⛔ + Không nên</button>
+  <span class="sep"></span>
+  <span style="color:var(--muted);font-size:13px">Thay đổi tự lưu trong trình duyệt này. Muốn giữ lâu dài/chia sẻ: bấm <b>💾 Tải bản đã sửa</b>.</span>
+</div>
+
+<div id="content">
+
+<!-- ═════════════ 1 ═════════════ -->
+<section class="sec" data-c="1" id="s-bat-dau">
+<h2><span class="ico">🚀</span>Bắt đầu nhanh trong 5 phút</h2>
+<p class="lead">Chưa biết bắt đầu từ đâu? Làm theo 5 bước này, bạn sẽ có ảnh đã chú thích và biết cách mở mọi tính năng còn lại.</p>
+<ol class="steps">
+  <li><b>Mở thanh chụp.</b> Bấm <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>5</kbd> (hoặc bấm biểu tượng SnapDoc ở khay hệ thống cạnh đồng hồ → <span class="menu">Mở thanh chụp…</span>). Một thanh công cụ nổi sẽ hiện ra.</li>
+  <li><b>Chụp một vùng.</b> Bấm <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>2</kbd>, rồi <b>kéo chuột</b> quanh vùng cần chụp. Nhả chuột là chụp xong. (<kbd>Esc</kbd> hoặc chuột phải để huỷ.)</li>
+  <li><b>Chú thích.</b> Ảnh mở trong <b>Editor</b>. Bấm phím <kbd>R</kbd> vẽ khung, <kbd>A</kbd> vẽ mũi tên, <kbd>T</kbd> viết chữ, <kbd>B</kbd> che mờ thông tin riêng tư.</li>
+  <li><b>Lưu hoặc copy.</b> <kbd>Ctrl</kbd>+<kbd>C</kbd> copy ảnh vào clipboard để dán vào chat/email; <kbd>Ctrl</kbd>+<kbd>S</kbd> lưu file.</li>
+  <li><b>Tìm lại sau.</b> Mọi ảnh/video đều nằm trong <b>Thư viện (History)</b> — mở bằng <kbd>Ctrl</kbd>+<kbd>K</kbd> rồi gõ “thư viện”.</li>
+</ol>
+
+<h3>Bức tranh tổng thể</h3>
+<div class="diagram">
+<svg viewBox="0 0 900 200" role="img" aria-label="Luồng làm việc: Chụp hoặc quay, rồi chỉnh sửa, rồi lưu copy chia sẻ">
+  <defs><marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>
+  <g style="--acc:#2563eb"><rect class="box" x="10" y="40" width="190" height="120" rx="16"/><text x="105" y="76" text-anchor="middle" class="e">📸 🎬</text><text x="105" y="104" text-anchor="middle">1. CHỤP / QUAY</text><text class="s" x="105" y="124" text-anchor="middle">vùng · cửa sổ · cuộn dài</text><text class="s" x="105" y="142" text-anchor="middle">toàn màn · quay video</text></g>
+  <path d="M205 100 H262" stroke="#7c3aed" stroke-width="3" marker-end="url(#ar)"/>
+  <g style="--acc:#7c3aed"><rect class="box" x="268" y="40" width="190" height="120" rx="16"/><text x="363" y="76" text-anchor="middle" class="e">🖍️ ✂️</text><text x="363" y="104" text-anchor="middle">2. CHỈNH SỬA</text><text class="s" x="363" y="124" text-anchor="middle">chú thích · làm đẹp · OCR</text><text class="s" x="363" y="142" text-anchor="middle">cắt video · phụ đề AI</text></g>
+  <path d="M463 100 H520" stroke="#7c3aed" stroke-width="3" marker-end="url(#ar)"/>
+  <g style="--acc:#059669"><rect class="box" x="526" y="40" width="190" height="120" rx="16"/><text x="621" y="76" text-anchor="middle" class="e">💾 📋</text><text x="621" y="104" text-anchor="middle">3. LƯU / COPY</text><text class="s" x="621" y="124" text-anchor="middle">Lưu · Save As · Copy</text><text class="s" x="621" y="142" text-anchor="middle">Lưu + Copy · Xuất GIF</text></g>
+  <path d="M721 100 H778" stroke="#7c3aed" stroke-width="3" marker-end="url(#ar)"/>
+  <g style="--acc:#db2777"><rect class="box" x="784" y="40" width="108" height="120" rx="16"/><text x="838" y="76" text-anchor="middle" class="e">🗂️ ☁️</text><text x="838" y="104" text-anchor="middle">4. THƯ VIỆN</text><text class="s" x="838" y="124" text-anchor="middle">tìm lại · ghim</text><text class="s" x="838" y="142" text-anchor="middle">chia sẻ Drive</text></g>
+</svg>
+</div>
+<div class="note"><b>💡 Mẹo</b>Quên phím tắt? Cứ nhấn <kbd>Ctrl</kbd>+<kbd>K</kbd> (bảng lệnh) và gõ tên việc muốn làm: “chụp”, “quay”, “OCR”, “webcam”, “cài đặt”, “hướng dẫn”… SnapDoc sẽ liệt kê lệnh, bấm <kbd>Enter</kbd> để chạy.</div>
+</section>
+
+<!-- ═════════════ 2 ═════════════ -->
+<section class="sec" data-c="2" id="s-mo-app">
+<h2><span class="ico">🧭</span>Các cách mở tính năng</h2>
+<p class="lead">Mọi tính năng đều có nhiều đường vào — chọn cách bạn thấy tiện nhất.</p>
+<div class="grid">
+  <div class="card"><h5>⌨️ Phím tắt toàn cục</h5>Dùng được ở bất kỳ ứng dụng nào, kể cả khi SnapDoc đang chạy ẩn. Xem bảng ở mục “Bảng phím tắt”.</div>
+  <div class="card"><h5>🧰 Thanh chụp (Capture Bar)</h5>Thanh nổi có các nút Chụp vùng / cửa sổ / toàn màn / cuộn dài, Quay vùng và nút <span class="menu">Tuỳ chọn ▾</span>.</div>
+  <div class="card"><h5>🔔 Khay hệ thống (tray)</h5>Bấm biểu tượng SnapDoc cạnh đồng hồ: Chụp nhanh, Chụp tất cả màn hình, Quay màn hình, Thư viện, Cài đặt, Thoát.</div>
+  <div class="card"><h5>🔍 Bảng lệnh <kbd>Ctrl</kbd>+<kbd>K</kbd></h5>Gõ để tìm lệnh. Có ở Editor và Thư viện.</div>
+</div>
+<h3>Menu “Tuỳ chọn” trên thanh chụp</h3>
+<p>Bấm <span class="menu">Tuỳ chọn ▾</span> ở cuối thanh chụp để đặt nhanh:</p>
+<table>
+<tr><th>Nhóm</th><th>Lựa chọn</th><th>Ý nghĩa</th></tr>
+<tr><td><b>Sau khi chụp</b></td><td>Mở editor · Clipboard · Lưu file · Lưu + Copy · Copy + Mở editor</td><td>Việc SnapDoc làm ngay sau mỗi lần chụp. “Clipboard” = chỉ copy, không mở gì cả.</td></tr>
+<tr><td><b>Quay màn hình</b></td><td>Tắt (chỉ hình) · Microphone · Âm thanh hệ thống · Cả Mic &amp; Hệ thống</td><td>Nguồn âm thanh khi quay video.</td></tr>
+<tr><td></td><td>Hiển thị phím bấm · Hiển thị click chuột</td><td>Vẽ phím bạn bấm và vòng tròn tại chỗ click lên video — rất hữu ích cho video hướng dẫn.</td></tr>
+<tr><td><b>Hẹn giờ chụp</b></td><td>Tắt · 5 giây · 10 giây</td><td>Đợi vài giây trước khi chụp để bạn kịp mở menu/tooltip cần chụp.</td></tr>
+<tr><td><b>Lối tắt</b></td><td>🎨 Mở Editor · 🎞️ Mở video… · 📖 Hướng dẫn sử dụng · ⌨️ Bảng phím tắt</td><td>Mở Editor trống, <b>chọn một file video có sẵn trên máy để chỉnh sửa</b>, mở trang này, hoặc đổi phím tắt.</td></tr>
+</table>
+</section>
+
+<!-- ═════════════ 3 ═════════════ -->
+<section class="sec" data-c="3" id="s-chup-anh">
+<h2><span class="ico">📸</span>Chụp ảnh màn hình</h2>
+<p class="lead">5 kiểu chụp, mỗi kiểu một phím tắt. Phím tắt có thể đổi trong <span class="menu">Cài đặt › Phím tắt</span>.</p>
+<table>
+<tr><th>Kiểu chụp</th><th>Phím mặc định</th><th>Cách dùng</th></tr>
+<tr><td><b>Vùng chọn</b></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>2</kbd></td><td>Kéo chuột chọn vùng. Di chuột qua một cửa sổ rồi <b>click</b> để chụp luôn cả cửa sổ đó.</td></tr>
+<tr><td><b>Cửa sổ</b></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>3</kbd></td><td>Hiện danh sách cửa sổ đang mở, bấm cửa sổ cần chụp.</td></tr>
+<tr><td><b>Toàn màn hình</b></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd></td><td>Chụp ngay, không cần chọn. Máy nhiều màn hình: click vào màn hình muốn chụp.</td></tr>
+<tr><td><b>Tất cả màn hình</b></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>4</kbd></td><td>Ghép ngang mọi màn hình thành 1 ảnh.</td></tr>
+<tr><td><b>Cuộn dài</b></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>6</kbd></td><td>Chụp trang web/tài liệu dài hơn màn hình — xem hướng dẫn bên dưới.</td></tr>
+<tr><td><b>Chụp nhanh</b></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd></td><td>Chọn vùng và <b>chú thích ngay tại chỗ</b> (không mở Editor), xong bấm Copy/Lưu.</td></tr>
+<tr><td><b>Chụp &amp; copy nhanh</b></td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>Chọn vùng, ảnh vào clipboard ngay.</td></tr>
+</table>
+
+<h3>Chụp cuộn dài (trang web, tài liệu)</h3>
+<ol class="steps">
+  <li>Bấm <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>6</kbd>, kéo chọn vùng nội dung sẽ cuộn.</li>
+  <li>Bấm <b>Bắt đầu</b> (hoặc <kbd>Space</kbd>), rồi <b>cuộn chuột chậm và đều tay</b>.</li>
+  <li>Xong bấm <b>Hoàn thành</b> (hoặc <kbd>Enter</kbd>). SnapDoc ghép các khung thành 1 ảnh dài.</li>
+</ol>
+<div class="note warn"><b>⚠️ Lưu ý</b>Cuộn quá nhanh sẽ bị bỏ sót nội dung — SnapDoc sẽ cảnh báo “Cuộn quá nhanh”. Nếu báo “Mất dấu nối”, hãy cuộn chậm lại hoặc cuộn ngược lên một chút để bắt lại. Nút <b>Nối tiếp từ đây</b> giúp nối lại chỗ bị đứt. SnapDoc còn tự nhận ra footer cố định/sidebar và cho bạn chọn ghim footer hoặc kéo dài nền sidebar.</div>
+
+<h3>Sau khi chụp xong</h3>
+<p>Tuỳ cài đặt “Sau khi chụp”, ảnh sẽ mở Editor, vào clipboard, hoặc lưu file. Ngoài ra thường có <b>hình thu nhỏ</b> hiện ở góc màn hình với các nút: <b>✎ Sửa</b>, <b>Copy</b>, <b>Lưu</b>, <b>Ghim</b> (giữ ảnh nổi trên mọi cửa sổ — tiện để đối chiếu), <b>Đóng</b>.</p>
+<div class="note"><b>💡 Mẹo</b>Muốn chụp một menu chuột phải hoặc tooltip? Đặt <b>Hẹn giờ 5 giây</b> trong menu Tuỳ chọn, bấm chụp, rồi mở menu cần chụp trước khi hết giờ.</div>
+</section>
+
+<!-- ═════════════ 4 ═════════════ -->
+<section class="sec" data-c="4" id="s-quay">
+<h2><span class="ico">🎬</span>Quay màn hình</h2>
+<p class="lead">Quay vùng, cửa sổ hoặc toàn màn hình, kèm âm thanh và hiệu ứng phím/click.</p>
+<ol class="steps">
+  <li>Chọn nguồn âm thanh trong <span class="menu">Tuỳ chọn ▾</span> (mặc định: <b>Tắt</b> — chỉ hình). Bật <b>Hiển thị phím bấm</b> / <b>Hiển thị click chuột</b> nếu quay hướng dẫn.</li>
+  <li>Bấm <b>Quay vùng</b> trên thanh chụp (hoặc <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd> để quay toàn màn hình). Với quay vùng: kéo chọn vùng rồi bấm <b>● Bắt đầu quay</b>.</li>
+  <li>Khi đang quay có bộ điều khiển nhỏ: <b>⏸ Tạm dừng / Tiếp tục</b>, và <b>■ Dừng quay</b>. Bạn cũng có thể bấm biểu tượng tray để dừng.</li>
+  <li>Quay xong, video mở trong <b>Editor video</b> để cắt, tăng tốc, thêm chú thích, tạo phụ đề…</li>
+</ol>
+<h3>Chọn nguồn âm thanh</h3>
+<table>
+<tr><th>Lựa chọn</th><th>Khi nào dùng</th></tr>
+<tr><td>Tắt (chỉ hình)</td><td>Quay không tiếng, hoặc bạn sẽ lồng tiếng sau.</td></tr>
+<tr><td>Microphone</td><td>Bạn vừa quay vừa thuyết minh.</td></tr>
+<tr><td>Âm thanh hệ thống</td><td>Thu tiếng phát ra từ máy (video, nhạc, cuộc họp).</td></tr>
+<tr><td>Cả Mic &amp; Hệ thống</td><td>Thu cả hai cùng lúc; vẫn đồng bộ khi Tạm dừng/Tiếp tục.</td></tr>
+</table>
+<h3>Webcam Bubble (camera tròn nổi)</h3>
+<p>Mở bằng <kbd>Ctrl</kbd>+<kbd>K</kbd> → “Webcam Bubble” (bấm lần nữa để tắt). Một khung camera tròn nổi trên màn hình — kéo đặt ở góc bất kỳ. Khi khung này nằm trong vùng đang quay, hình bạn sẽ xuất hiện trong video. Bấm <kbd>Esc</kbd> hoặc nút đóng để tắt.</p>
+<div class="note warn"><b>⚠️ Lưu ý</b>Lần đầu dùng, Windows sẽ hỏi quyền camera/micro — bạn cần cho phép thì mới dùng được.</div>
+<div class="note"><b>💡 Mẹo</b>Bật <b>Ghi lại giao diện SnapDoc</b> trong <span class="menu">Cài đặt › Quay video</span> nếu bạn muốn quay chính cửa sổ SnapDoc (làm video hướng dẫn dùng SnapDoc). Mặc định các cửa sổ của SnapDoc không bị quay vào video.</div>
+</section>
+
+<!-- ═════════════ 5 ═════════════ -->
+<section class="sec" data-c="5" id="s-editor-anh">
+<h2><span class="ico">🖍️</span>Chỉnh sửa ảnh (Editor)</h2>
+<p class="lead">Chú thích, che thông tin riêng tư, làm đẹp ảnh, trích chữ — tất cả trong một cửa sổ.</p>
+<h3>Các công cụ vẽ &amp; phím tắt</h3>
+<p>Chỉ cần bấm một phím chữ (không giữ Ctrl) để đổi công cụ:</p>
+<table>
+<tr><th>Phím</th><th>Công cụ</th><th>Dùng để</th></tr>
+<tr><td><kbd>V</kbd></td><td>Chọn / sửa</td><td>Chọn, di chuyển, đổi cỡ đối tượng đã vẽ.</td></tr>
+<tr><td><kbd>R</kbd></td><td>Vẽ khung</td><td>Khoanh vùng cần chú ý. <kbd>Shift</kbd>+<kbd>R</kbd> hoặc <kbd>E</kbd> = <b>khung có số</b>.</td></tr>
+<tr><td><kbd>O</kbd></td><td>Hình tròn</td><td>Khoanh tròn.</td></tr>
+<tr><td><kbd>A</kbd></td><td>Mũi tên</td><td><kbd>Shift</kbd>+<kbd>A</kbd> hoặc <kbd>W</kbd> = <b>mũi tên có số</b>.</td></tr>
+<tr><td><kbd>D</kbd></td><td>Mũi tên 2 chiều</td><td>Chỉ quan hệ hai đầu.</td></tr>
+<tr><td><kbd>L</kbd></td><td>Đường thẳng</td><td>Kẻ đường.</td></tr>
+<tr><td><kbd>T</kbd></td><td>Viết chữ</td><td>Chọn cỡ chữ, màu chữ, màu nền, mũi tên chỉ đích (callout).</td></tr>
+<tr><td><kbd>N</kbd></td><td>Đánh số (bước)</td><td>Gắn nhãn 1-2-3 cho các bước; có nút <b>Đánh số lại</b> và <b>Đặt lại về 1</b>.</td></tr>
+<tr><td><kbd>H</kbd></td><td>Tô sáng</td><td>Bút dạ quang.</td></tr>
+<tr><td><kbd>B</kbd></td><td>Che mờ</td><td>3 kiểu: <b>Blur mềm</b>, <b>Pixel hoá</b>, <b>Che đặc</b>. Dùng để giấu thông tin nhạy cảm.</td></tr>
+<tr><td><kbd>C</kbd></td><td>Cắt (Crop)</td><td>Cắt xén ảnh. <kbd>Ctrl</kbd>+<kbd>C</kbd> khi đang crop = sao chép phần cắt.</td></tr>
+<tr><td><kbd>G</kbd></td><td>Khung nền</td><td>Thêm nền gradient, đệm, bo góc, đổ bóng quanh ảnh.</td></tr>
+<tr><td><kbd>K</kbd></td><td>Khung code</td><td>Thêm khối code có tô màu cú pháp (nhiều ngôn ngữ).</td></tr>
+<tr><td><kbd>Esc</kbd></td><td colspan="2">Thoát công cụ / huỷ thao tác đang làm.</td></tr>
+</table>
+<div class="note warn"><b>⚠️ Lưu ý</b>Đang viết chữ mà bấm <kbd>Esc</kbd> sẽ <b>huỷ</b> đoạn chữ đó. Muốn giữ chữ, hãy bấm ra ngoài khung chữ (hoặc đổi sang công cụ khác) thay vì nhấn Esc.</div>
+
+<h3>Làm đẹp ảnh 1 chạm (Beautify)</h3>
+<p>Bấm <b>Làm đẹp</b> trên thanh công cụ: SnapDoc tự bo góc, đổ bóng 3D và phủ nền gradient — ảnh trông chuyên nghiệp ngay để đăng bài/tài liệu. Muốn tự chỉnh: dùng công cụ <b>Khung nền</b> (<kbd>G</kbd>) để đổi dải màu, góc, độ đệm, bo góc, đổ bóng (không/nhẹ/vừa/đậm).</p>
+
+<h3>Trích chữ từ ảnh (OCR) &amp; Live Text</h3>
+<ul>
+  <li><b>OCR tức thì:</b> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>, kéo chọn vùng bất kỳ trên màn hình → chữ được chép thẳng vào clipboard. Nhận tiếng Việt (có dấu), chạy hoàn toàn offline.</li>
+  <li><b>Live Text trong Editor:</b> bấm nút <b>OCR</b> trên thanh công cụ. Chữ trên ảnh trở nên <b>bôi đen được</b> như văn bản: kéo chọn rồi <kbd>Ctrl</kbd>+<kbd>C</kbd>. Bấm <b>Tắt Live Text</b> hoặc <kbd>Esc</kbd> để quay lại vẽ.</li>
+  <li><b>Che nhạy cảm:</b> nút <b>Che nhạy cảm</b> tự quét ảnh, tìm <b>email, token/khoá API, số điện thoại, địa chỉ IP, số thẻ</b> và che mờ chúng giúp bạn.</li>
+</ul>
+<div class="note warn"><b>⚠️ Lưu ý</b>Luôn <b>nhìn lại</b> ảnh sau khi che tự động. OCR có thể bỏ sót; với ID/email viết bằng chữ không dấu, mô hình tiếng Việt đôi khi thêm dấu nên nhận sai — hãy kiểm tra lại trước khi chia sẻ.</div>
+
+<h3>Lưu, copy, nối ảnh</h3>
+<table>
+<tr><th>Thao tác</th><th>Phím</th></tr>
+<tr><td>Lưu</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd> (ảnh có chú thích vẫn sửa lại được ở lần mở sau)</td></tr>
+<tr><td>Save As… (chọn nơi lưu)</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td></tr>
+<tr><td>Lưu + Copy</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td></tr>
+<tr><td>Copy vào clipboard</td><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td></tr>
+<tr><td>Chụp mới / Mở ảnh từ file</td><td><kbd>Ctrl</kbd>+<kbd>N</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd></td></tr>
+<tr><td>Hoàn tác / Làm lại</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td></tr>
+<tr><td>Xoá đối tượng đang chọn</td><td><kbd>Delete</kbd></td></tr>
+<tr><td>Đưa lên trên / xuống dưới cùng</td><td><kbd>]</kbd> / <kbd>[</kbd></td></tr>
+<tr><td>Phóng to / thu nhỏ / vừa khung</td><td><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>−</kbd> / <kbd>Ctrl</kbd>+<kbd>0</kbd></td></tr>
+</table>
+<ul>
+  <li><b>Nối ảnh dài:</b> nút <b>Ghép</b> → thêm nhiều ảnh (hoặc dán từ clipboard), chọn hướng Ngang/Dọc, canh lề, khe hở, màu nền, rồi <b>Nối ảnh</b>.</li>
+  <li><b>Dán / thả ảnh:</b> dán ảnh bằng <kbd>Ctrl</kbd>+<kbd>V</kbd> hoặc kéo thả file ảnh vào Editor để chèn.</li>
+  <li><b>Flatten:</b> “đóng băng” mọi chú thích vào ảnh gốc. <span class="b">Không hoàn tác được</span> — chỉ dùng khi chắc chắn.</li>
+</ul>
+</section>
+
+<!-- ═════════════ 6 ═════════════ -->
+<section class="sec" data-c="6" id="s-editor-video">
+<h2><span class="ico">✂️</span>Chỉnh sửa video</h2>
+<p class="lead">Cắt đoạn thừa, tăng tốc, chú thích, phóng to theo chuột… rồi lưu thành video mới.</p>
+<h3>Cắt &amp; chia đoạn</h3>
+<table>
+<tr><th>Việc</th><th>Cách làm</th></tr>
+<tr><td>Cắt từ đầu tới vị trí đang dừng</td><td><kbd>Q</kbd></td></tr>
+<tr><td>Cắt từ vị trí đang dừng tới cuối</td><td><kbd>W</kbd></td></tr>
+<tr><td>Chia đoạn tại vị trí đang dừng</td><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td></tr>
+<tr><td>Xoá đoạn đang chọn</td><td><kbd>Delete</kbd></td></tr>
+<tr><td>Hoàn tác / Làm lại</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td></tr>
+<tr><td>Bỏ hết thay đổi</td><td>Nút <b>Đặt lại</b></td></tr>
+</table>
+<h3>Hiệu ứng &amp; chú thích trên video</h3>
+<div class="grid">
+  <div class="card"><h5>⏩ Tốc độ</h5>Đổi tốc độ cả video hoặc từng đoạn; thêm <b>vùng tốc độ</b> riêng trên dải Speed Track (tăng tốc đoạn chờ, giảm tốc đoạn cần xem kỹ).</div>
+  <div class="card"><h5>🔍 Focus (Zoom)</h5>Tự phóng to theo thao tác chuột, hoặc thêm vùng zoom thủ công và kéo “tâm zoom” tới chỗ cần nhấn mạnh.</div>
+  <div class="card"><h5>🖱️ Chuột điện ảnh</h5>Làm con trỏ di chuyển mượt kiểu Screen Studio, thêm sóng nước khi click.</div>
+  <div class="card"><h5>🖍️ Chú thích</h5>Khung (<kbd>R</kbd>), che mờ (<kbd>B</kbd>), chữ (<kbd>T</kbd>), mũi tên (<kbd>A</kbd>) — gắn theo thời gian trên dải riêng, kéo để đổi lúc xuất hiện.</div>
+  <div class="card"><h5>📐 Crop khung hình</h5><kbd>C</kbd> để cắt khung, chọn tỉ lệ hoặc tự do.</div>
+  <div class="card"><h5>🔇 Tách âm thanh</h5>Xoá tiếng khỏi video (bấm lại để giữ).</div>
+</div>
+<h3>Xuất ra</h3>
+<ul>
+  <li><b>Lưu thành video mới</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>): giữ nguyên bản gốc — <span class="b">khuyên dùng</span>. Mũi tên bên cạnh có “Chọn nơi lưu…”.</li>
+  <li><b>Lưu đè</b> (<kbd>Ctrl</kbd>+<kbd>S</kbd>): ghi đè <span class="b">vĩnh viễn</span> lên video gốc.</li>
+  <li><b>Lưu khung hình</b> hiện tại thành ảnh (mở tiếp trong Editor ảnh) và <b>Xuất GIF</b> (chọn đoạn, FPS, kích thước, lặp; có ước tính dung lượng; nên &lt; 15 giây).</li>
+</ul>
+<div class="note ok"><b>✅ Nên làm</b>Luôn dùng “Lưu thành video mới” trước. Chỉ “Lưu đè” khi bạn chắc chắn không cần bản gốc.</div>
+</section>
+
+<!-- ═════════════ 7 ═════════════ -->
+<section class="sec" data-c="7" id="s-phu-de">
+<h2><span class="ico">💬</span>Phụ đề tự động (AI)</h2>
+<p class="lead">Nhận diện giọng nói thành phụ đề ngay trên máy bạn (Whisper, <b>offline</b> — video không rời khỏi máy). Mở bằng nút 💬 “Phụ đề tự động (AI)” trên thanh công cụ của Editor video.</p>
+
+<h3>Luồng làm việc</h3>
+<div class="diagram">
+<svg viewBox="0 0 980 190" role="img" aria-label="Luồng phụ đề: cài model một lần, tạo phụ đề chạy nền, popup tiến độ, sửa dòng, xuất">
+  <defs><marker id="ar2" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ca8a04"/></marker></defs>
+  <g style="--acc:#ca8a04">
+   <rect class="box" x="6" y="35" width="170" height="120" rx="14"/><text x="91" y="68" text-anchor="middle" class="e">⬇️</text><text x="91" y="94" text-anchor="middle">1. Cài model</text><text class="s" x="91" y="114" text-anchor="middle">chỉ làm 1 lần</text><text class="s" x="91" y="131" text-anchor="middle">tick nhiều model</text>
+   <path d="M180 95 H212" stroke="#ca8a04" stroke-width="3" marker-end="url(#ar2)"/>
+   <rect class="box" x="216" y="35" width="170" height="120" rx="14"/><text x="301" y="68" text-anchor="middle" class="e">▶️</text><text x="301" y="94" text-anchor="middle">2. Tạo phụ đề</text><text class="s" x="301" y="114" text-anchor="middle">chọn ngôn ngữ + model</text><text class="s" x="301" y="131" text-anchor="middle">hộp thoại tự đóng</text>
+   <path d="M390 95 H422" stroke="#ca8a04" stroke-width="3" marker-end="url(#ar2)"/>
+   <rect class="box" x="426" y="35" width="170" height="120" rx="14"/><text x="511" y="68" text-anchor="middle" class="e">⏳</text><text x="511" y="94" text-anchor="middle">3. Chạy nền</text><text class="s" x="511" y="114" text-anchor="middle">popup nhỏ góc phải</text><text class="s" x="511" y="131" text-anchor="middle">bạn làm việc khác</text>
+   <path d="M600 95 H632" stroke="#ca8a04" stroke-width="3" marker-end="url(#ar2)"/>
+   <rect class="box" x="636" y="35" width="150" height="120" rx="14"/><text x="711" y="68" text-anchor="middle" class="e">✏️</text><text x="711" y="94" text-anchor="middle">4. Soát lại</text><text class="s" x="711" y="114" text-anchor="middle">sửa chữ từng dòng</text><text class="s" x="711" y="131" text-anchor="middle">xem trên trình phát</text>
+   <path d="M790 95 H822" stroke="#ca8a04" stroke-width="3" marker-end="url(#ar2)"/>
+   <rect class="box" x="826" y="35" width="148" height="120" rx="14"/><text x="900" y="68" text-anchor="middle" class="e">📤</text><text x="900" y="94" text-anchor="middle">5. Xuất</text><text class="s" x="900" y="114" text-anchor="middle">.srt · video bật/tắt</text><text class="s" x="900" y="131" text-anchor="middle">hoặc ghi cứng</text>
+  </g>
+</svg>
+</div>
+
+<h3>Bước 1 — Cài engine &amp; model (lần đầu)</h3>
+<p>Lần đầu mở, SnapDoc cần tải engine Whisper (~8 MB) và ít nhất một model. <b>Bạn có thể tick nhiều model để tải một lượt</b> — chúng được tải lần lượt ở nền, bạn có thể đóng hộp thoại và làm việc khác. Nếu mạng đứt, lần sau sẽ <b>tải tiếp từ phần đã có</b>; mọi tệp đều được kiểm tra SHA-256 trước khi dùng.</p>
+<figure><img src="{{img:captions-setup.png}}" alt="Hộp thoại cài đặt phụ đề với danh sách model có ô tick"><figcaption>Tick một hoặc nhiều model rồi bấm “Tải về &amp; cài đặt (… model · … MB)”. Nút “Chọn tất cả model chưa cài” tick sẵn giúp bạn.</figcaption></figure>
+<div class="bars" style="--acc:var(--c7)">
+  <div class="bar"><span><b>Nhanh</b></span><span class="t"><i style="width:10%"></i></span><span>57 MB</span></div>
+  <div class="bar"><span><b>Cân bằng</b> ★</span><span class="t"><i style="width:33%"></i></span><span>181 MB</span></div>
+  <div class="bar"><span><b>Chính xác nhất</b></span><span class="t"><i style="width:100%"></i></span><span>547 MB</span></div>
+</div>
+<table>
+<tr><th>Model</th><th>Tốc độ</th><th>Độ chính xác</th><th>Nên dùng khi</th></tr>
+<tr><td><b>Nhanh</b></td><td>⚡⚡⚡ nhanh nhất</td><td>★☆☆</td><td>Video ngắn, giọng rõ, cần ra kết quả gấp, máy yếu.</td></tr>
+<tr><td><b>Cân bằng</b> (khuyên dùng)</td><td>⚡⚡</td><td>★★☆</td><td>Hầu hết video hằng ngày.</td></tr>
+<tr><td><b>Chính xác nhất</b></td><td>⚡ chậm nhất</td><td>★★★</td><td>Video quan trọng, giọng khó nghe, nhiều tên riêng; chấp nhận chờ lâu hơn.</td></tr>
+</table>
+<div class="note"><b>💡 Mẹo</b>Cứ cài cả 3 model cho tiện: sau này chỉ việc chọn model trong danh sách “Model” khi tạo phụ đề — không phải tải lại. Nút “Tải thêm model (n chưa cài)” luôn có trong hộp thoại.</div>
+
+<h3>Bước 2 — Tạo phụ đề (chạy nền)</h3>
+<ol class="steps">
+  <li>Chọn <b>Ngôn ngữ trong video</b> (hoặc “Tự nhận diện”) và <b>Model</b>.</li>
+  <li>Bấm <b>Tạo phụ đề</b>. Hộp thoại <b>tự đóng</b> và một <b>popup nhỏ</b> hiện ở góc phải dưới.</li>
+  <li>Bạn cứ tiếp tục chỉnh sửa video. Xong sẽ có thông báo “Phụ đề đã tạo xong” và phụ đề hiện ngay trên trình phát.</li>
+</ol>
+<figure><img src="{{img:captions-popup.png}}" alt="Popup tiến độ phụ đề nhỏ ở góc phải dưới Editor"><figcaption>Popup tiến độ: hiển thị %, thời gian đã chạy, nút ✕ để huỷ và “Mở phụ đề” để xem hộp thoại đầy đủ.</figcaption></figure>
+<div class="note ok"><b>✅ Không sợ mất việc</b>Đóng hộp thoại, đổi sang video khác, thậm chí <b>đóng cả cửa sổ Editor</b> — việc nhận diện vẫn chạy. Mở lại đúng video đó, phụ đề đã xong sẽ tự xuất hiện, không phải dịch lại từ đầu. (Chỉ khi bạn <b>thoát hẳn SnapDoc</b> thì tác vụ đang chạy mới dừng.)</div>
+<div class="note warn"><b>⚠️ Lưu ý</b>Mỗi lúc chỉ nhận diện được <b>một</b> video. Model “Chính xác nhất” trên máy không có card đồ hoạ có thể mất khá lâu với video dài; SnapDoc chạy ở mức ưu tiên thấp để máy vẫn mượt, nên đừng lo nếu % tăng chậm — popup có đồng hồ để bạn biết nó vẫn đang chạy. Nếu tạm thời không cần nữa, bấm ✕ trên popup để huỷ.</div>
+
+<h3>Bước 3 — Soát lại &amp; chỉnh sửa</h3>
+<figure><img src="{{img:captions-done.png}}" alt="Phụ đề hiển thị trên trình phát video"><figcaption>Phụ đề tự hiện trên trình phát, bám theo vị trí phát.</figcaption></figure>
+<ul>
+  <li>Mở lại hộp thoại phụ đề để thấy danh sách dòng: bấm <b>mốc giờ</b> để nhảy tới đoạn đó, <b>sửa chữ</b> trực tiếp, bấm <b>✕</b> để xoá dòng.</li>
+  <li>Tick/bỏ <b>“Hiện phụ đề ngay trên trình phát”</b> để bật/tắt xem thử.</li>
+  <li><b>Copy nội dung</b> để lấy toàn bộ chữ làm biên bản/bài viết.</li>
+</ul>
+
+<h3>Bước 4 — Xuất</h3>
+<table>
+<tr><th>Nút</th><th>Kết quả</th><th>Khi nào chọn</th></tr>
+<tr><td>💾 <b>Lưu .srt</b></td><td>File phụ đề chuẩn dùng cho YouTube, VLC…</td><td>Muốn dùng phụ đề ở nơi khác.</td></tr>
+<tr><td>🎬 <b>Xuất video (phụ đề bật/tắt được)</b></td><td>Video có track phụ đề, người xem bật/tắt tuỳ ý. Không mã hoá lại hình nên <b>rất nhanh</b>.</td><td>Phát bằng VLC/trình phát hỗ trợ phụ đề.</td></tr>
+<tr><td>🔥 <b>Xuất video (ghi cứng vào hình)</b></td><td>Chữ in luôn vào hình, ai xem cũng thấy. Mã hoá lại nên lâu hơn.</td><td>Đăng mạng xã hội/chat nơi không bật được phụ đề.</td></tr>
+</table>
+<div class="note"><b>💡 Mẹo</b>Video đã cắt/đổi tốc độ? Cứ xuất bình thường — mốc phụ đề tự khớp theo bản đã chỉnh sửa. Tick “File .srt khớp với video đã chỉnh sửa” để file .srt cũng khớp.</div>
+</section>
+
+<!-- ═════════════ 8 ═════════════ -->
+<section class="sec" data-c="8" id="s-thu-vien">
+<h2><span class="ico">🗂️</span>Thư viện (History) &amp; Thùng rác</h2>
+<p class="lead">Mọi ảnh/video bạn chụp đều được lưu lại để tìm và dùng lại.</p>
+<ul>
+  <li><b>Mở:</b> <kbd>Ctrl</kbd>+<kbd>K</kbd> → “Thư viện”, hoặc menu tray → <span class="menu">Thư viện (History)…</span>.</li>
+  <li><b>Xem:</b> dạng lưới hoặc danh sách. <b>Lọc</b> theo loại (Ảnh/Video), chế độ chụp, khoảng ngày (Hôm nay, 7 ngày, 30 ngày, tuỳ chọn).</li>
+  <li><b>Mỗi mục:</b> bấm để xem chi tiết (kích thước, dung lượng, thời lượng, loại chụp), <b>đổi tên</b> bằng cách bấm vào tên, <b>Mở Editor</b>, <b>Hiện trong Explorer</b>, <b>Ghim</b> nổi trên màn hình.</li>
+  <li><b>Thao tác hàng loạt:</b> chọn nhiều mục để xoá/khôi phục cùng lúc; thấy tổng dung lượng đã chọn.</li>
+  <li><b>Thùng rác:</b> mục xoá vào Thùng rác trước, có thể <b>Khôi phục</b> hoặc <b>Xoá vĩnh viễn</b> / <b>Dọn sạch Thùng rác</b>. Vừa xoá còn nút <b>Hoàn tác</b> ngay trên thông báo.</li>
+</ul>
+<div class="note warn"><b>⚠️ Lưu ý</b>“Xoá vĩnh viễn” và “Dọn sạch Thùng rác” <b>không hoàn tác được</b>.</div>
+</section>
+
+<!-- ═════════════ Đưa video có sẵn vào SnapDoc ═════════════ -->
+<section class="sec" data-c="3" id="s-dua-video">
+<h2><span class="ico">🎞️</span>Đưa video có sẵn trên máy vào SnapDoc</h2>
+<p class="lead">Không chỉ video bạn quay — mọi file video (mp4, mov, m4v, webm, mkv, avi) đều mở được để cắt, đổi tốc độ, crop, tạo phụ đề.</p>
+<table>
+<tr><th>Cách</th><th>Làm thế nào</th></tr>
+<tr><td><b>Kéo-thả</b></td><td>Kéo file từ Explorer rồi thả lên <b>thanh chụp</b>, cửa sổ <b>Thư viện</b> hoặc <b>Editor</b>. Video mở ngay trong Editor (khi kéo sẽ thấy khung xanh “Thả video…”).</td></tr>
+<tr><td><b>Menu Tuỳ chọn</b></td><td>Thanh chụp → <span class="menu">Tuỳ chọn ▾</span> → <span class="menu">🎞️ Mở video…</span> → chọn file.</td></tr>
+<tr><td><b>Bảng lệnh</b></td><td><kbd>Ctrl</kbd>+<kbd>K</kbd> → gõ “video” → <span class="menu">Mở video từ máy…</span>. Hoặc <b>dán thẳng đường dẫn</b> file (kể cả khi Explorer “Copy as path” có dấu ngoặc kép) rồi nhấn <kbd>Enter</kbd>.</td></tr>
+<tr><td><b>Chuột phải → Open with</b></td><td>Chuột phải file video trong Explorer → <b>Open with → SnapDoc</b>.</td></tr>
+<tr><td><b>AI agent</b></td><td>Nhờ Claude/Antigravity gọi tool <code>import_video</code> — xem mục “AI Agent (MCP)”.</td></tr>
+</table>
+<div class="note"><b>ℹ️ Lưu ý</b>File gốc <b>không bị sao chép</b>: SnapDoc ghi nhớ vị trí file trong Thư viện (riêng .mkv/.avi được chuyển sang mp4 để xem được). Cắt/chỉnh sửa mặc định tạo <b>video mới</b>, file gốc giữ nguyên — chỉ khi bạn chọn “Lưu đè bản gốc” thì file gốc mới bị thay.</div>
+</section>
+
+<!-- ═════════════ AI Agent (MCP) ═════════════ -->
+<section class="sec" data-c="4" id="s-mcp">
+<h2><span class="ico">🤖</span>AI Agent (MCP) — để Claude / Antigravity điều khiển SnapDoc</h2>
+<p class="lead">SnapDoc có sẵn một <b>MCP server</b> nội bộ. Khi bạn bật, các trợ lý AI như <b>Claude Code, Claude Desktop, Antigravity</b> đọc được Thư viện của bạn và — nếu bạn cho phép — thêm video, cắt/crop/đổi tốc độ, tạo phụ đề… ngay trên app thật đang chạy.</p>
+<h3>Bật và kết nối (1 lần)</h3>
+<ol class="steps">
+  <li>Mở <span class="menu">Cài đặt › AI Agent</span> và bật <b>Bật MCP server</b>. (Mặc định <b>tắt</b>; chỉ nhận kết nối từ chính máy bạn, bắt buộc có token.)</li>
+  <li>Trong cùng tab, mục <b>KẾT NỐI</b> có sẵn cấu hình đã điền token — bấm <b>Sao chép</b> rồi dán vào công cụ của bạn:
+    <ul>
+      <li><b>Claude Code</b>: dán lệnh <code>claude mcp add --transport http snapdoc …</code> vào terminal.</li>
+      <li><b>Claude Desktop</b>: dán đoạn JSON “cầu stdio” vào <code>claude_desktop_config.json</code> (Settings → Developer → Edit Config), rồi khởi động lại Claude Desktop.</li>
+      <li><b>Antigravity</b>: dán JSON vào <code>mcp_config.json</code> (Manage MCP servers → View raw config). Dùng bản “stdio” hoặc bản HTTP (<code>serverUrl</code> + <code>headers</code>).</li>
+    </ul>
+  </li>
+  <li>SnapDoc phải <b>đang chạy</b> thì agent mới kết nối được. Hỏi thử: <i>“Dùng SnapDoc liệt kê 5 video gần nhất của tôi”</i>.</li>
+</ol>
+<h3>3 lớp an toàn</h3>
+<div class="grid">
+  <div class="card"><h5>1️⃣ Công tắc quyền GHI</h5>Mặc định <b>chỉ đọc</b>. Muốn agent nhập/cắt/đổi tên/tạo phụ đề, bạn tự bật <b>“Cho phép agent GHI / SỬA / XOÁ”</b> (có hộp xác nhận) và tắt lại bất cứ lúc nào — có hiệu lực <b>ngay</b>. Tắt thì mọi tool ghi bị từ chối kèm thông báo rõ.</div>
+  <div class="card"><h5>2️⃣ Nhật ký thao tác</h5>Mọi lời gọi của agent (giờ, tool, tham số rút gọn, kết quả/lỗi, cả lần bị từ chối hay sai token) hiện ở <span class="menu">Cài đặt › AI Agent › Nhật ký</span>. Agent chỉ <b>đọc</b> được nhật ký, không sửa/xoá được; chỉ bạn xoá.</div>
+  <div class="card"><h5>3️⃣ Xác nhận thao tác nguy hiểm</h5><b>Chuyển vào Thùng rác</b> và <b>ghi đè video gốc</b> luôn hiện hộp thoại hỏi bạn trong app (Cho phép / Từ chối), kể cả khi quyền ghi đang bật. Thêm giới hạn 30 thao tác ghi/phút, đường dẫn xuất chỉ trong thư mục an toàn và không ghi đè file có sẵn. <b>Xoá vĩnh viễn, dọn Thùng rác, đổi Cài đặt không có trên MCP.</b></div>
+</div>
+<h3>Agent làm được gì?</h3>
+<table>
+<tr><th>Nhóm</th><th>Tool</th></tr>
+<tr><td><b>Đọc</b> (luôn dùng được)</td><td><code>app_status</code> · <code>list_history</code> · <code>get_item</code> · <code>get_preview</code> (xem ảnh/khung hình) · <code>get_captions</code> · <code>captions_status</code> · <code>get_job</code> · <code>get_activity_log</code></td></tr>
+<tr><td><b>Ghi</b> (cần bật quyền ghi)</td><td><code>import_video</code> (thêm video từ đường dẫn) · <code>open_in_editor</code> · <code>rename_item</code> · <code>trim_video</code> (giữ các đoạn, đổi tốc độ từng đoạn, bỏ tiếng, crop) · <code>crop_video</code> · <code>change_speed</code> · <code>captions_setup</code> · <code>generate_captions</code> · <code>export_srt</code> · <code>add_captions_to_video</code> · <code>restore_item</code></td></tr>
+<tr><td><b>Nguy hiểm</b> (hỏi bạn từng lần)</td><td><code>delete_to_trash</code> · <code>trim_video</code>/<code>crop_video</code>/<code>change_speed</code> với <code>replaceOriginal</code></td></tr>
+</table>
+<p>Tác vụ lâu (cắt video dài, tạo phụ đề) chạy nền: agent nhận một mã <code>jobId</code> và hỏi lại bằng <code>get_job</code>, nên không bị treo.</p>
+<div class="note warn"><b>⚠️ Bảo mật</b>Token giống mật khẩu: ai có token (và quyền ghi đang bật) là điều khiển được SnapDoc. Đừng dán token lên chỗ công khai. Nghi ngờ lộ → bấm <b>Tạo token mới</b> (client cũ bị ngắt ngay). Không dùng được từ trang web trong trình duyệt (bị chặn).</div>
+</section>
+
+<!-- ═════════════ 9 ═════════════ -->
+<section class="sec" data-c="1" id="s-chia-se">
+<h2><span class="ico">☁️</span>Chia sẻ qua Google Drive</h2>
+<p class="lead">Tải ảnh/video lên Google Drive <b>của chính bạn</b> và lấy link để gửi người khác.</p>
+<ol class="steps">
+  <li>Vào <span class="menu">Cài đặt › Chia sẻ</span> và kết nối tài khoản Google Drive theo hướng dẫn trên màn hình (đăng nhập qua trình duyệt).</li>
+  <li>Mở <b>Thư viện</b>, chọn mục cần chia sẻ, bấm <b>☁️ Chia sẻ qua Drive</b>.</li>
+  <li>Đợi tải lên xong, nút đổi thành <b>✓ Đã copy link</b> — link đã nằm trong clipboard, dán cho người nhận.</li>
+</ol>
+<div class="note warn"><b>⚠️ Lưu ý</b>Tính năng này dùng tài khoản/ứng dụng Google của <b>bạn</b>, nên bạn cần tự thiết lập thông tin kết nối ở tab Chia sẻ. SnapDoc không gửi dữ liệu của bạn đi đâu khác ngoài Drive của bạn. Bạn có thể ngắt kết nối bất kỳ lúc nào trong cùng tab.</div>
+</section>
+
+<!-- ═════════════ 10 ═════════════ -->
+<section class="sec" data-c="2" id="s-cai-dat">
+<h2><span class="ico">⚙️</span>Cài đặt</h2>
+<p class="lead">Mở bằng <kbd>Ctrl</kbd>+<kbd>K</kbd> → “Cài đặt”, hoặc menu tray. Thay đổi được <b>lưu tự động</b>.</p>
+<table>
+<tr><th>Tab</th><th>Bạn chỉnh được</th></tr>
+<tr><td><b>Chung</b></td><td>Thư mục lưu mặc định · hành vi sau khi chụp · <b>Khởi động cùng hệ thống</b> (SnapDoc tự chạy nền khi bật máy) · ngôn ngữ hiển thị (Tiếng Việt / English).</td></tr>
+<tr><td><b>Phím tắt</b></td><td>Bấm vào ô phím → nhấn tổ hợp mới. <kbd>Esc</kbd> để huỷ, <kbd>⌫</kbd> để xoá. Báo lỗi nếu trùng với phần mềm khác.</td></tr>
+<tr><td><b>Quay video</b></td><td>Nguồn âm thanh · ghi lại giao diện SnapDoc · hiển thị phím bấm · hiển thị click chuột.</td></tr>
+<tr><td><b>Quyền hạn</b></td><td>Kiểm tra quyền ghi màn hình/camera/micro mà Windows đã cấp.</td></tr>
+<tr><td><b>Chia sẻ</b></td><td>Kết nối/ngắt Google Drive.</td></tr>
+<tr><td><b>AI Agent</b></td><td>Bật/tắt MCP server cho Claude/Antigravity · công tắc quyền ghi · token &amp; cấu hình kết nối · nhật ký thao tác của agent.</td></tr>
+</table>
+</section>
+
+<!-- ═════════════ 11 ═════════════ -->
+<section class="sec" data-c="3" id="s-phim-tat">
+<h2><span class="ico">⌨️</span>Bảng phím tắt tổng hợp</h2>
+<p class="lead">Phím tắt <b>toàn cục</b> dùng được ở mọi nơi. Đây là giá trị mặc định — nếu bạn đã đổi, hãy xem tab <span class="menu">Cài đặt › Phím tắt</span> (đó là nguồn đúng nhất).</p>
+<h3>Toàn cục</h3>
+<table>
+<tr><th>Việc</th><th>Phím mặc định</th></tr>
+<tr><td>Chụp toàn màn hình</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd></td></tr>
+<tr><td>Chụp vùng chọn</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>2</kbd></td></tr>
+<tr><td>Chụp cửa sổ</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>3</kbd></td></tr>
+<tr><td>Chụp tất cả màn hình</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>4</kbd></td></tr>
+<tr><td>Mở thanh chụp</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>5</kbd></td></tr>
+<tr><td>Chụp cuộn dài</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>6</kbd></td></tr>
+<tr><td>Quay màn hình (bắt đầu/dừng)</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd></td></tr>
+<tr><td>Chụp nhanh (chú thích tại chỗ)</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd></td></tr>
+<tr><td>Chụp &amp; copy nhanh</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td></tr>
+<tr><td>Trích chữ (OCR) vào clipboard</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></td></tr>
+<tr><td>Bảng lệnh</td><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td></tr>
+</table>
+<h3>Trong Editor ảnh</h3>
+<p><kbd>V</kbd> Chọn · <kbd>R</kbd> Khung · <kbd>E</kbd> Khung số · <kbd>O</kbd> Tròn · <kbd>A</kbd> Mũi tên · <kbd>W</kbd> Mũi tên số · <kbd>D</kbd> Mũi tên 2 chiều · <kbd>L</kbd> Đường · <kbd>T</kbd> Chữ · <kbd>N</kbd> Đánh số · <kbd>H</kbd> Tô sáng · <kbd>B</kbd> Che mờ · <kbd>C</kbd> Cắt · <kbd>G</kbd> Khung nền · <kbd>K</kbd> Khung code · <kbd>Esc</kbd> Thoát</p>
+<h3>Trong Editor video</h3>
+<p><kbd>Q</kbd> Cắt đầu · <kbd>W</kbd> Cắt đuôi · <kbd>Ctrl</kbd>+<kbd>B</kbd> Chia đoạn · <kbd>Delete</kbd> Xoá đoạn · <kbd>R</kbd> Khung · <kbd>B</kbd> Che mờ · <kbd>T</kbd> Chữ · <kbd>A</kbd> Mũi tên · <kbd>C</kbd> Crop · <kbd>Ctrl</kbd>+<kbd>S</kbd> Lưu đè · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> Lưu thành video mới</p>
+<div class="note"><b>💡 Mẹo</b>Nếu một phím tắt không hoạt động, có thể phần mềm khác đang chiếm tổ hợp đó. Vào <span class="menu">Cài đặt › Phím tắt</span> và đổi sang tổ hợp khác.</div>
+</section>
+
+<!-- ═════════════ 12 ═════════════ -->
+<section class="sec" data-c="4" id="s-hoi-dap">
+<h2><span class="ico">🛟</span>Câu hỏi thường gặp &amp; xử lý sự cố</h2>
+<details><summary>Phím tắt không chạy / báo xung đột</summary><p>Một ứng dụng khác đang dùng cùng tổ hợp phím. Vào <b>Cài đặt › Phím tắt</b> và đặt tổ hợp khác. Với máy dùng nhiều phần mềm chụp màn hình, hãy tắt phần mềm kia hoặc đổi phím.</p></details>
+<details><summary>Chụp ra ảnh đen / không chụp được</summary><p>Kiểm tra <b>Cài đặt › Quyền hạn</b> xem SnapDoc đã được cấp quyền ghi màn hình chưa. Với một số cửa sổ có bảo vệ nội dung (phát phim có bản quyền…), hệ điều hành có thể chặn chụp.</p></details>
+<details><summary>Tạo phụ đề lâu, % đứng một chỗ</summary><p>Model “Chính xác nhất” chạy trên CPU nên chậm với video dài. SnapDoc chạy ở mức ưu tiên thấp để không làm đơ máy, nên tiến độ có thể tăng chậm — đồng hồ trên popup cho biết nó vẫn chạy. Thử model “Cân bằng”/“Nhanh”, hoặc cắt bớt video trước. Bấm ✕ trên popup để huỷ bất cứ lúc nào.</p></details>
+<details><summary>Đóng Editor rồi, phụ đề đã tạo có mất không?</summary><p>Không. Kết quả được giữ lại; mở lại đúng video đó là phụ đề tự hiện. Chỉ khi thoát hẳn SnapDoc lúc đang chạy thì tác vụ mới bị dừng và phải tạo lại.</p></details>
+<details><summary>Tải model bị đứt giữa chừng</summary><p>Bấm “Tải về &amp; cài đặt” lần nữa — SnapDoc tải tiếp từ phần đã có thay vì tải lại từ đầu. Nếu báo không khớp SHA-256, tệp bị hỏng sẽ tự xoá; chỉ cần thử lại.</p></details>
+<details><summary>OCR nhận sai email / mã bằng chữ không dấu</summary><p>Mô hình tiếng Việt đôi khi tự thêm dấu vào chuỗi ASCII. Hãy kiểm tra lại kết quả, đặc biệt trước khi che hoặc chia sẻ thông tin nhạy cảm.</p></details>
+<details><summary>Muốn xoá hẳn một ảnh khỏi máy</summary><p>Xoá trong Thư viện (vào Thùng rác) rồi vào <b>Thùng rác › Xoá vĩnh viễn</b>.</p></details>
+<details><summary>Dữ liệu của tôi có bị gửi lên mạng không?</summary><p>Chụp, quay, OCR và phụ đề đều xử lý <b>ngay trên máy</b>. Chỉ khi bạn chủ động “Chia sẻ qua Drive” thì tệp đó mới được tải lên Google Drive của bạn.</p></details>
+</section>
+
+<!-- ═════════════ 13 ═════════════ -->
+<section class="sec" data-c="5" id="s-ve-tai-lieu">
+<h2><span class="ico">📝</span>Về trang hướng dẫn này — cách sửa, thêm, xoá nội dung</h2>
+<p class="lead">Trang này là của bạn: ghi chú thêm, xoá mục không cần, sắp xếp lại theo thói quen.</p>
+<ol class="steps">
+  <li>Bấm <b>✏️ Sửa nội dung</b> ở thanh trên cùng. Mọi chữ trong trang trở thành sửa được — bấm vào và gõ.</li>
+  <li><b>Thêm mục mới:</b> bấm nút <b>＋ Thêm mục mới</b> ở cuối trang. <b>Xoá / di chuyển mục:</b> dùng các nút ↑ ↓ 🗑 ở góc phải mỗi mục.</li>
+  <li><b>Định dạng:</b> dùng thanh công cụ (đậm, nghiêng, màu chữ, tô nổi, danh sách) và các nút <b>＋ Mẹo / Lưu ý / Nên làm / Không nên</b> để chèn khung ghi chú có màu.</li>
+  <li>Bấm <b>✏️</b> lần nữa để tắt chế độ sửa. Nội dung <b>tự lưu</b> trong trình duyệt này.</li>
+</ol>
+<div class="note"><b>💡 Giữ lâu dài</b>Bấm <b>💾 Tải bản đã sửa</b> để tải về file .html chứa toàn bộ chỉnh sửa của bạn (gửi cho đồng nghiệp hoặc chép đè lên file hướng dẫn của SnapDoc). Muốn bỏ hết chỉnh sửa: <b>↩️ Khôi phục bản gốc</b>.</div>
+<div class="note ok"><b>✅ Cập nhật không mất chỉnh sửa</b>Khi SnapDoc ra bản mới có hướng dẫn mới, nếu bạn <b>chưa sửa</b> file thì nó tự cập nhật; nếu bạn <b>đã sửa</b>, SnapDoc giữ nguyên file của bạn và đặt bản mới cạnh đó với tên <code>HUONG_DAN_SU_DUNG.moi.html</code> để bạn tự đối chiếu. Xoá file hướng dẫn đi, mở lại từ menu là có bản gốc mới.</div>
+<p style="color:var(--muted);font-size:13px">File hướng dẫn nằm trong thư mục dữ liệu của SnapDoc: <code>%LOCALAPPDATA%\com.snapdoc.app\guide\HUONG_DAN_SU_DUNG.html</code> (mở bằng Notepad/VS Code nếu muốn sửa trực tiếp mã HTML).</p>
+</section>
+
+</div><!-- /content -->
+
+<button class="addsec" id="bAdd">＋ Thêm mục mới</button>
+</main>
+</div>
+<footer class="end">SnapDoc v{{version}} — Hướng dẫn sử dụng. Nội dung có thể khác chút tuỳ phiên bản bạn đang dùng.</footer>
+<div id="toast"></div>
+
+<script>
+(function(){
+  var KEY = "snapdoc-guide:" + document.querySelector('meta[name=guide-version]').content;
+  var content = document.getElementById("content");
+  var toc = document.getElementById("toc");
+  var toastEl = document.getElementById("toast");
+  var COLORS = ["1","2","3","4","5","6","7","8"];
+  function toast(msg){ toastEl.textContent = msg; toastEl.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(function(){ toastEl.classList.remove("show"); }, 2400); }
+  function store(op, k, v){ try { return op === "get" ? localStorage.getItem(k) : op === "set" ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch(e){ return null; } }
+
+  /* ── dọn UI sửa ra khỏi nội dung trước khi lưu/xuất ── */
+  function cleanHTML(){
+    var c = content.cloneNode(true);
+    c.querySelectorAll(".secbar").forEach(function(n){ n.remove(); });
+    c.querySelectorAll("[contenteditable]").forEach(function(n){ n.removeAttribute("contenteditable"); });
+    c.querySelectorAll(".hidden").forEach(function(n){ n.classList.remove("hidden"); });
+    return c.innerHTML;
+  }
+  function persist(){
+    if (store("set", KEY, cleanHTML()) === null && !persist.warned) { /* có thể bị chặn lưu */ }
+  }
+  var saveT; function persistSoon(){ clearTimeout(saveT); saveT = setTimeout(persist, 400); }
+
+  /* ── khôi phục bản đã sửa (nếu có) ── */
+  var saved = store("get", KEY);
+  if (saved) { content.innerHTML = saved; }
+
+  /* ── thanh công cụ mỗi mục (chỉ hiện khi sửa) ── */
+  function addSecBars(){
+    content.querySelectorAll("section.sec").forEach(function(sec){
+      if (sec.querySelector(".secbar")) return;
+      var bar = document.createElement("div"); bar.className = "secbar"; bar.contentEditable = "false";
+      bar.innerHTML = '<button data-a="up" title="Chuyển lên">↑</button><button data-a="down" title="Chuyển xuống">↓</button><button data-a="color" title="Đổi màu mục">🎨</button><button class="del" data-a="del" title="Xoá mục này">🗑</button>';
+      sec.insertBefore(bar, sec.firstChild);
+    });
+  }
+  content.addEventListener("click", function(e){
+    var b = e.target.closest(".secbar button"); if (!b) return;
+    var sec = b.closest("section.sec"), a = b.getAttribute("data-a");
+    if (a === "up" && sec.previousElementSibling) sec.parentNode.insertBefore(sec, sec.previousElementSibling);
+    else if (a === "down" && sec.nextElementSibling) sec.parentNode.insertBefore(sec.nextElementSibling, sec);
+    else if (a === "color") { var cur = COLORS.indexOf(sec.getAttribute("data-c") || "1"); sec.setAttribute("data-c", COLORS[(cur + 1) % COLORS.length]); }
+    else if (a === "del") { var t = (sec.querySelector("h2") || {}).textContent || "mục này"; if (confirm("Xoá mục “" + t.trim() + "”?")) { sec.remove(); toast("Đã xoá mục"); } }
+    buildToc(); persistSoon();
+  });
+
+  /* ── mục lục tự sinh ── */
+  var tocLinks = [];
+  function buildToc(){
+    toc.querySelectorAll("a").forEach(function(a){ a.remove(); });
+    tocLinks = [];
+    content.querySelectorAll("section.sec").forEach(function(sec, i){
+      if (!sec.id) sec.id = "s-moi-" + Date.now().toString(36) + i;
+      var h = sec.querySelector("h2"); if (!h) return;
+      var ico = h.querySelector(".ico"); var text = h.textContent.replace(ico ? ico.textContent : "", "").trim();
+      var a = document.createElement("a"); a.href = "#" + sec.id;
+      a.innerHTML = "<i>" + (ico ? ico.textContent : "📌") + "</i><span></span>"; a.querySelector("span").textContent = text;
+      a.style.setProperty("--acc", getComputedStyle(sec).getPropertyValue("--acc"));
+      toc.appendChild(a); tocLinks.push({ a: a, sec: sec });
+    });
+    observe();
+  }
+  var io;
+  function observe(){
+    if (io) io.disconnect();
+    io = new IntersectionObserver(function(es){
+      es.forEach(function(en){ if (en.isIntersecting) { tocLinks.forEach(function(t){ t.a.classList.toggle("active", t.sec === en.target); }); } });
+    }, { rootMargin: "-20% 0px -70% 0px" });
+    tocLinks.forEach(function(t){ io.observe(t.sec); });
+  }
+
+  /* ── tìm kiếm ── */
+  document.getElementById("q").addEventListener("input", function(e){
+    var q = e.target.value.trim().toLowerCase();
+    content.querySelectorAll("section.sec").forEach(function(sec){
+      sec.classList.toggle("hidden", !!q && sec.textContent.toLowerCase().indexOf(q) === -1);
+    });
+    tocLinks.forEach(function(t){ t.a.classList.toggle("hidden", t.sec.classList.contains("hidden")); });
+  });
+
+  /* ── chế độ sửa ── */
+  var editing = false, bEdit = document.getElementById("bEdit");
+  function setEditing(on){
+    editing = on; document.body.classList.toggle("editing", on); bEdit.classList.toggle("on", on);
+    bEdit.textContent = on ? "✅ Xong sửa" : "✏️ Sửa nội dung";
+    if (on) addSecBars(); else content.querySelectorAll(".secbar").forEach(function(n){ n.remove(); });
+    content.querySelectorAll("section.sec").forEach(function(sec){
+      sec.querySelectorAll("h2,h3,h4,p,li,td,th,summary,figcaption,.card,.note,.lead").forEach(function(n){
+        if (on) n.setAttribute("contenteditable", "true"); else n.removeAttribute("contenteditable");
+      });
+    });
+    if (!on) persist();
+    toast(on ? "Chế độ sửa: bấm vào chữ để sửa" : "Đã lưu chỉnh sửa trong trình duyệt");
+  }
+  bEdit.addEventListener("click", function(){ setEditing(!editing); });
+  content.addEventListener("input", function(){ persistSoon(); });
+
+  /* ── định dạng ── */
+  document.getElementById("edtools").addEventListener("mousedown", function(e){ if (e.target.closest("button")) e.preventDefault(); });
+  document.querySelectorAll("[data-cmd]").forEach(function(b){ b.addEventListener("click", function(){ document.execCommand(b.getAttribute("data-cmd")); persistSoon(); }); });
+  document.getElementById("fcolor").addEventListener("change", function(e){ if (e.target.value) document.execCommand("foreColor", false, e.target.value); persistSoon(); e.target.value = ""; });
+  document.getElementById("bHl").addEventListener("click", function(){
+    var sel = window.getSelection(); if (!sel.rangeCount || sel.isCollapsed) { toast("Hãy bôi đen chữ cần tô nổi"); return; }
+    var span = document.createElement("span"); span.className = "hl"; span.appendChild(sel.getRangeAt(0).extractContents()); sel.getRangeAt(0).insertNode(span); persistSoon();
+  });
+  var NOTE_TITLES = { "": "💡 Mẹo", warn: "⚠️ Lưu ý", ok: "✅ Nên làm", bad: "⛔ Không nên" };
+  document.querySelectorAll("[data-note]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var k = b.getAttribute("data-note"); var n = document.createElement("div"); n.className = "note" + (k ? " " + k : "");
+      n.innerHTML = "<b>" + NOTE_TITLES[k] + "</b>Nhập nội dung ghi chú ở đây…"; n.setAttribute("contenteditable", "true");
+      var sec = (window.getSelection().anchorNode && (window.getSelection().anchorNode.parentElement || document.body).closest("section.sec")) || content.lastElementChild;
+      sec.appendChild(n); n.scrollIntoView({ block: "center" }); persistSoon();
+    });
+  });
+
+  /* ── thêm mục mới ── */
+  document.getElementById("bAdd").addEventListener("click", function(){
+    var sec = document.createElement("section"); sec.className = "sec"; sec.setAttribute("data-c", String(1 + Math.floor(Math.random() * 8)));
+    sec.id = "s-moi-" + Date.now().toString(36);
+    sec.innerHTML = '<h2><span class="ico">📌</span>Tiêu đề mục mới</h2><p class="lead">Mô tả ngắn…</p><p>Viết nội dung hướng dẫn của bạn ở đây. Dùng thanh công cụ phía trên để định dạng.</p>';
+    content.appendChild(sec); addSecBars();
+    sec.querySelectorAll("h2,p").forEach(function(n){ n.setAttribute("contenteditable", "true"); });
+    buildToc(); persistSoon(); sec.scrollIntoView({ block: "start" }); toast("Đã thêm mục mới");
+  });
+
+  /* ── tải bản đã sửa / khôi phục ── */
+  document.getElementById("bSave").addEventListener("click", function(){
+    var wasEditing = editing; if (wasEditing) setEditing(false);
+    var doc = document.documentElement.cloneNode(true);
+    doc.querySelector("#content").innerHTML = cleanHTML();
+    doc.querySelectorAll("#toast,.edtools").forEach(function(n){ n.classList.remove("show"); });
+    doc.querySelector("body").className = "";
+    var html = "<!DOCTYPE html>\n" + doc.outerHTML;
+    var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "HUONG_DAN_SU_DUNG.html";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+    toast("Đã tải bản hướng dẫn đã sửa");
+  });
+  document.getElementById("bReset").addEventListener("click", function(){
+    if (!confirm("Bỏ mọi chỉnh sửa của bạn và quay về bản gốc?")) return;
+    store("del", KEY); location.reload();
+  });
+
+  buildToc();
+})();
+</script>
+</body>
+</html>

@@ -108,10 +108,19 @@ pub fn copy_gif_file(path: &std::path::Path) -> Result<(), String> {
     if !path.exists() {
         return Err(format!("File GIF không tồn tại: {}", path.display()));
     }
-    let path_str = path.to_string_lossy();
-    let script = format!("Set-Clipboard -Path '{}'", path_str.replace('\'', "''"));
+    // KHÔNG ghép đường dẫn vào chuỗi lệnh: PowerShell coi cả dấu nháy cong (‘ ’ ‚ ‛) là dấu nháy đơn,
+    // nên chỉ thoát `'` vẫn để tên file chứa ký tự đó "thoát" khỏi chuỗi và chèn được lệnh.
+    // Truyền qua biến môi trường + `-LiteralPath` (không diễn giải ký tự đại diện như `[`).
     let mut cmd = std::process::Command::new("powershell");
-    cmd.args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script]);
+    cmd.env("SNAPDOC_CLIP_PATH", path.as_os_str());
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-WindowStyle",
+        "Hidden",
+        "-Command",
+        "Set-Clipboard -LiteralPath $env:SNAPDOC_CLIP_PATH",
+    ]);
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;

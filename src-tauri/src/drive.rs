@@ -199,17 +199,76 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-/// PKCE code_verifier — nối 3 UUID v4 (đủ entropy, ký tự hex thuần nên không
-/// cần url-encode) để tránh thêm crate `sha2`/`rand` chỉ cho việc này. Dùng
-/// `code_challenge_method=plain` (code_challenge = chính verifier) — Google
-/// vẫn chấp nhận phương thức này cho installed app.
+/// PKCE code_verifier — 2 UUID v4 nối lại (64 ký tự hex ∈ tập "unreserved" của RFC 7636, độ dài
+/// hợp lệ 43–128, ~244 bit ngẫu nhiên từ CSPRNG của hệ điều hành).
 fn gen_code_verifier() -> String {
+    format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
+}
+
+/// PKCE `S256`: challenge = BASE64URL(SHA-256(verifier)). Khác `plain` (challenge = chính verifier),
+/// kẻ nghe lén được URL xác thực (log trình duyệt, extension…) KHÔNG suy ra được verifier để đổi mã.
+fn pkce_challenge_s256(verifier: &str) -> String {
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+/// `state` ngẫu nhiên cho mỗi lần đăng nhập: chống CSRF/"login CSRF" — trang web hay tiến trình
+/// khác trên máy gọi thẳng cổng loopback kèm `code` của kẻ tấn công sẽ bị bỏ qua vì sai `state`.
+fn gen_state() -> String {
+    format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
+}
+
+fn build_auth_url(client_id: &str, redirect_uri: &str, challenge: &str, state: &str) -> String {
     format!(
-        "{}{}{}",
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple()
+        "{AUTH_ENDPOINT}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={}&code_challenge_method=S256&state={}&access_type=offline&prompt=consent",
+        urlencode(client_id),
+        urlencode(redirect_uri),
+        urlencode(SCOPE),
+        urlencode(challenge),
+        urlencode(state),
     )
+}
+
+/// So sánh chuỗi hằng thời gian (không rò rỉ độ dài khớp qua thời gian phản hồi).
+fn ct_eq_str(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
+}
+
+/// Kết quả của 1 request tới cổng loopback.
+#[derive(Debug, PartialEq)]
+enum Callback {
+    /// `code` hợp lệ kèm đúng `state`.
+    Code(String),
+    /// Google trả lỗi (người dùng bấm Từ chối…) kèm đúng `state`.
+    Denied(String),
+    /// Không phải callback của lần đăng nhập này (sai đường dẫn/`state`) → bỏ qua, tiếp tục chờ.
+    Ignore,
+}
+
+fn classify_callback(url: &str, expected_state: &str) -> Callback {
+    let (path, query) = match url.split_once('?') {
+        Some((p, q)) => (p, q),
+        None => (url, ""),
+    };
+    if path != "/callback" {
+        return Callback::Ignore;
+    }
+    match parse_query_param(query, "state") {
+        Some(st) if ct_eq_str(&st, expected_state) => {}
+        _ => return Callback::Ignore,
+    }
+    if let Some(e) = parse_query_param(query, "error") {
+        return Callback::Denied(e);
+    }
+    match parse_query_param(query, "code") {
+        Some(c) if !c.is_empty() => Callback::Code(c),
+        _ => Callback::Ignore,
+    }
 }
 
 fn urlencode(s: &str) -> String {
@@ -271,13 +330,8 @@ fn connect_blocking(app: &AppHandle, client_id: String, client_secret: String) -
     let redirect_uri = format!("http://127.0.0.1:{port}/callback");
 
     let verifier = gen_code_verifier();
-    let auth_url = format!(
-        "{AUTH_ENDPOINT}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={}&code_challenge_method=plain&access_type=offline&prompt=consent",
-        urlencode(&client_id),
-        urlencode(&redirect_uri),
-        urlencode(SCOPE),
-        urlencode(&verifier),
-    );
+    let state = gen_state();
+    let auth_url = build_auth_url(&client_id, &redirect_uri, &pkce_challenge_s256(&verifier), &state);
 
     {
         use tauri_plugin_opener::OpenerExt;
@@ -286,26 +340,34 @@ fn connect_blocking(app: &AppHandle, client_id: String, client_secret: String) -
             .map_err(|e| format!("Không mở được trình duyệt hệ thống: {e}"))?;
     }
 
-    let request = server
-        .recv_timeout(Duration::from_secs(180))
-        .map_err(|e| format!("Lỗi chờ đăng nhập Google: {e}"))?
-        .ok_or("Hết thời gian chờ đăng nhập Google (3 phút) — hãy thử Kết nối lại.")?;
-
-    let full_url = request.url().to_string();
-    let query = full_url.splitn(2, '?').nth(1).unwrap_or("").to_string();
-    let code = parse_query_param(&query, "code");
-    let auth_error = parse_query_param(&query, "error");
-
-    let response_html = "<html><body style=\"font-family:sans-serif;text-align:center;padding-top:80px;color:#333\"><h2>Đã xong — bạn có thể đóng tab này và quay lại SnapDoc.</h2></body></html>";
-    let header = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
-        .map_err(|_| "Lỗi nội bộ (header)".to_string())?;
-    let response = tiny_http::Response::from_string(response_html).with_header(header);
-    let _ = request.respond(response);
-
-    if let Some(e) = auth_error {
-        return Err(format!("Google từ chối cấp quyền: {e}"));
-    }
-    let code = code.ok_or("Không nhận được mã xác thực từ Google.")?;
+    // Chờ ĐÚNG callback của lần đăng nhập này (đúng đường dẫn + đúng `state`). Request lạ — favicon,
+    // trình duyệt dò cổng, hoặc trang web/tiến trình khác cố nhét `code` giả — chỉ bị từ chối (404/400)
+    // chứ không được "ăn" mất lượt chờ.
+    let deadline = std::time::Instant::now() + Duration::from_secs(180);
+    let code = loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return Err("Hết thời gian chờ đăng nhập Google (3 phút) — hãy thử Kết nối lại.".into());
+        }
+        let request = server
+            .recv_timeout(remaining)
+            .map_err(|e| format!("Lỗi chờ đăng nhập Google: {e}"))?
+            .ok_or("Hết thời gian chờ đăng nhập Google (3 phút) — hãy thử Kết nối lại.")?;
+        let outcome = classify_callback(request.url(), &state);
+        if outcome == Callback::Ignore {
+            let _ = request.respond(tiny_http::Response::from_string("Not found").with_status_code(404));
+            continue;
+        }
+        let response_html = "<html><body style=\"font-family:sans-serif;text-align:center;padding-top:80px;color:#333\"><h2>Đã xong — bạn có thể đóng tab này và quay lại SnapDoc.</h2></body></html>";
+        let header = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+            .map_err(|_| "Lỗi nội bộ (header)".to_string())?;
+        let _ = request.respond(tiny_http::Response::from_string(response_html).with_header(header));
+        match outcome {
+            Callback::Code(c) => break c,
+            Callback::Denied(e) => return Err(format!("Google từ chối cấp quyền: {e}")),
+            Callback::Ignore => unreachable!(),
+        }
+    };
 
     let token_resp: serde_json::Value = ureq::post(TOKEN_ENDPOINT)
         .send_form(&[
@@ -484,6 +546,48 @@ pub async fn drive_upload(app: AppHandle, file_path: String, file_name: String) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pkce_s256_matches_rfc7636_vector() {
+        // RFC 7636, Appendix B.
+        assert_eq!(
+            pkce_challenge_s256("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+        let v = gen_code_verifier();
+        assert!((43..=128).contains(&v.len()));
+    }
+
+    #[test]
+    fn auth_url_uses_s256_and_state_never_plain() {
+        let u = build_auth_url("cid", "http://127.0.0.1:1/callback", "CHAL", "ST");
+        assert!(u.contains("code_challenge_method=S256"));
+        assert!(!u.contains("plain"));
+        assert!(u.contains("&state=ST&"));
+    }
+
+    #[test]
+    fn callback_requires_exact_path_and_state() {
+        let st = "abc123";
+        assert_eq!(classify_callback("/callback?code=XYZ&state=abc123", st), Callback::Code("XYZ".into()));
+        assert_eq!(classify_callback("/callback?code=XYZ", st), Callback::Ignore, "thiếu state");
+        assert_eq!(classify_callback("/callback?code=XYZ&state=evil", st), Callback::Ignore, "sai state");
+        assert_eq!(classify_callback("/other?code=XYZ&state=abc123", st), Callback::Ignore, "sai đường dẫn");
+        assert_eq!(classify_callback("/favicon.ico", st), Callback::Ignore);
+        assert_eq!(
+            classify_callback("/callback?error=access_denied&state=abc123", st),
+            Callback::Denied("access_denied".into())
+        );
+        assert_eq!(classify_callback("/callback?error=access_denied", st), Callback::Ignore, "lỗi giả không state");
+        assert_eq!(classify_callback("/callback?code=&state=abc123", st), Callback::Ignore, "code rỗng");
+    }
+
+    #[test]
+    fn ct_eq_str_basics() {
+        assert!(ct_eq_str("a", "a"));
+        assert!(!ct_eq_str("a", "b"));
+        assert!(!ct_eq_str("ab", "a"));
+    }
+
     use super::*;
 
     fn sample() -> DriveTokens {

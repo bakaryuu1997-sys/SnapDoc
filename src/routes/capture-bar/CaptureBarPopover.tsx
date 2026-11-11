@@ -91,9 +91,7 @@ export default function CaptureBarPopover() {
   const selectOutput = (o: OutputMode) => {
     userPickedRef.current = true;
     setOutput(o);
-    ipc.getSettings().then((s) => {
-      if (s) return ipc.setSettings({ ...s, defaultOutput: o });
-    }).catch(() => {}).finally(() => {
+    ipc.patchSettings({ defaultOutput: o }).catch(() => {}).finally(() => {
       userPickedRef.current = false;
       ipc.hideCaptureBarPopover().catch(() => {});
     });
@@ -101,9 +99,7 @@ export default function CaptureBarPopover() {
 
   const selectAudioSource = (a: AudioSource) => {
     setAudioSource(a);
-    ipc.getSettings().then((s) => {
-      if (s) return ipc.setSettings({ ...s, recordAudioSource: a });
-    }).catch(() => {}).finally(() => {
+    ipc.patchSettings({ recordAudioSource: a }).catch(() => {}).finally(() => {
       ipc.hideCaptureBarPopover().catch(() => {});
     });
   };
@@ -117,9 +113,7 @@ export default function CaptureBarPopover() {
         await ipc.requestAccessibilityPermission().catch(() => {});
       }
     }
-    ipc.getSettings().then((s) => {
-      if (s) return ipc.setSettings({ ...s, recordShowKeystrokes: next });
-    }).catch(() => {}).finally(() => {
+    ipc.patchSettings({ recordShowKeystrokes: next }).catch(() => {}).finally(() => {
       ipc.hideCaptureBarPopover().catch(() => {});
     });
   };
@@ -133,18 +127,14 @@ export default function CaptureBarPopover() {
         await ipc.requestAccessibilityPermission().catch(() => {});
       }
     }
-    ipc.getSettings().then((s) => {
-      if (s) return ipc.setSettings({ ...s, recordShowClicks: next });
-    }).catch(() => {}).finally(() => {
+    ipc.patchSettings({ recordShowClicks: next }).catch(() => {}).finally(() => {
       ipc.hideCaptureBarPopover().catch(() => {});
     });
   };
 
   const selectDelay = (d: 0 | 5 | 10) => {
     setDelaySeconds(d);
-    ipc.getSettings().then((s) => {
-      if (s) return ipc.setSettings({ ...s, timerSeconds: d });
-    }).catch(() => {}).finally(() => {
+    ipc.patchSettings({ timerSeconds: d }).catch(() => {}).finally(() => {
       ipc.hideCaptureBarPopover().catch(() => {});
     });
   };
@@ -262,6 +252,29 @@ export default function CaptureBarPopover() {
           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span>🎞️</span>
             <span>{t("intake.openVideo", "Mở video…")}</span>
+          </span>
+        </button>
+
+        {/* Hướng dẫn sử dụng — mở nhanh trang HTML (sửa được) bằng trình duyệt */}
+        <button
+          style={{
+            ...popItem(false),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            color: "#86efac",
+            fontWeight: 500,
+          }}
+          onClick={() => {
+            ipc.hideCaptureBarPopover().catch(() => {});
+            ipc.openGuide().catch(() => {});
+          }}
+          className="popover-btn"
+          title={t("captureBar.guideTooltip", "Mở hướng dẫn sử dụng đầy đủ (có thể tự sửa/thêm/xoá nội dung)")}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span>📖</span>
+            <span>{t("captureBar.guide", "Hướng dẫn sử dụng")}</span>
           </span>
         </button>
 

@@ -98,16 +98,45 @@ pub fn is_snapdoc(path: &Path) -> bool {
     }
 }
 
+/// Giới hạn kích thước SAU GIẢI NÉN của 1 entry: JSON (manifest/doc/draft) 32 MB, còn lại (ảnh) 256 MB.
+const MAX_JSON_ENTRY: u64 = 32 * 1024 * 1024;
+const MAX_BIN_ENTRY: u64 = 256 * 1024 * 1024;
+
+fn entry_limit(name: &str) -> u64 {
+    if name.ends_with(".json") {
+        MAX_JSON_ENTRY
+    } else {
+        MAX_BIN_ENTRY
+    }
+}
+
+fn too_big(name: &str, limit: u64) -> String {
+    format!(
+        "Entry {name} trong file .snapdoc quá lớn (> {} MB sau khi giải nén) — file có thể bị hỏng hoặc độc hại, đã từ chối mở.",
+        limit / (1024 * 1024)
+    )
+}
+
 fn read_entry<R: Read + Seek>(
     zip: &mut zip::ZipArchive<R>,
     name: &str,
 ) -> Result<Option<Vec<u8>>, String> {
     match zip.by_name(name) {
-        Ok(mut e) => {
-            // Cap tại 256MB để tránh OOM từ file lạ/corrupt khai size giả.
-            let mut buf = Vec::with_capacity(e.size().min(256 * 1024 * 1024) as usize);
-            e.read_to_end(&mut buf)
+        Ok(e) => {
+            let limit = entry_limit(name);
+            // Size khai trong header có thể nói dối → ngoài việc từ chối sớm còn PHẢI chặn khi
+            // đọc thật (`take`): trước đây chỉ giới hạn bộ nhớ cấp trước, còn `read_to_end` giải
+            // nén vô hạn → một file .snapdoc "zip bomb" (vài chục KB) làm tràn RAM khi mở.
+            if e.size() > limit {
+                return Err(too_big(name, limit));
+            }
+            let mut buf = Vec::with_capacity(e.size().min(limit) as usize);
+            e.take(limit + 1)
+                .read_to_end(&mut buf)
                 .map_err(|err| format!("Không đọc được entry {name}: {err}"))?;
+            if buf.len() as u64 > limit {
+                return Err(too_big(name, limit));
+            }
             Ok(Some(buf))
         }
         Err(zip::result::ZipError::FileNotFound) => Ok(None),
@@ -407,6 +436,32 @@ pub fn write_snapdoc_draft(path: &Path, draft_json: Option<&str>, updated_at: i6
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn zip_bomb_entry_is_rejected_not_inflated() {
+        use std::io::{Cursor, Write};
+        // 40 MB số 0 nén còn ~40 KB: JSON vượt trần 32 MB → phải bị từ chối.
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut w = zip::ZipWriter::new(&mut buf);
+            let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            w.start_file("doc.json", opts).unwrap();
+            let chunk = vec![0u8; 1024 * 1024];
+            for _ in 0..40 {
+                w.write_all(&chunk).unwrap();
+            }
+            w.start_file("manifest.json", opts).unwrap();
+            w.write_all(b"{}").unwrap();
+            w.finish().unwrap();
+        }
+        assert!(buf.get_ref().len() < 200_000, "file nén phải nhỏ (đúng kiểu zip bomb)");
+        let mut zip = zip::ZipArchive::new(Cursor::new(buf.into_inner())).unwrap();
+        let err = read_entry(&mut zip, "doc.json").unwrap_err();
+        assert!(err.contains("quá lớn"), "{err}");
+        // Entry nhỏ bình thường vẫn đọc được.
+        assert_eq!(read_entry(&mut zip, "manifest.json").unwrap().unwrap(), b"{}");
+        assert!(read_entry(&mut zip, "missing.json").unwrap().is_none());
+    }
+
     use super::*;
 
     fn tmp_path(name: &str) -> std::path::PathBuf {

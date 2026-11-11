@@ -1,0 +1,34 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "utility",
+  "description": "Bộ quyền HẸP cho cửa sổ phụ/tạm của SnapDoc: thanh chụp + popover, overlay chọn vùng, bộ hẹn giờ, chọn cửa sổ, thumbnail, chỉ báo/viền/phím/click khi quay, điều khiển chụp cuộn, webcam bubble, ảnh ghim. Chỉ đủ để tự ẩn/hiện/di chuyển/đóng và hiện hộp thoại hệ thống — KHÔNG có tạo cửa sổ mới, opener, telemetry. Thêm cửa sổ mới (label mới) phải thêm vào danh sách này nếu nó cần quyền JS.",
+  "windows": [
+    "capture-bar",
+    "capture-bar-popover",
+    "capture-timer",
+    "window-picker",
+    "thumbnail",
+    "webcam-bubble",
+    "recording-indicator",
+    "record-border",
+    "record-clicks",
+    "record-keystroke",
+    "record-stop-control",
+    "scroll-control",
+    "overlay",
+    "overlay-*",
+    "pin-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-start-dragging",
+    "dialog:default"
+  ]
+}

@@ -461,7 +461,10 @@ export const ipc = {
   openFiles: () => invoke<string[]>("open_files_dialog"),
   defaultSaveDir: () => invoke<string>("default_save_dir"),
   getSettings: () => invoke<Settings>("get_settings"),
+  /** Ghi cả object — CHỈ dùng khi thật sự cần thay toàn bộ. Đa số chỗ nên dùng `patchSettings`. */
   setSettings: (value: Settings) => invoke<void>("set_settings", { value }),
+  /** Ghi MỘT HOẶC VÀI key: backend đọc bản mới nhất, gộp, ghi nguyên tử (không mất thay đổi đồng thời). Trả về settings sau khi gộp. */
+  patchSettings: (patch: Partial<Settings>) => invoke<Settings>("patch_settings", { patch }),
   checkPermission: () => invoke<boolean>("check_screen_permission"),
   /** Mở prompt cấp quyền Screen Recording (macOS; OS khác luôn true). */
   requestScreenPermission: () => invoke<boolean>("request_screen_permission"),
@@ -559,6 +562,8 @@ export const ipc = {
    * preview đã ghép annotation; video: file .mp4 thật). */
   driveUploadHistoryItem: (id: string) =>
     invoke<{ link: string }>("drive_upload_history_item", { id }),
+  /** Mở hướng dẫn sử dụng (trang HTML sửa được) bằng trình duyệt mặc định. */
+  openGuide: () => invoke<string>("open_guide"),
   /** MCP (AI agent): trạng thái, công tắc, token, nhật ký. Xem `src-tauri/src/mcp`. */
   mcpGetState: () => invoke<McpInfo>("mcp_get_state"),
   mcpSetEnabled: (enabled: boolean) => invoke<McpInfo>("mcp_set_enabled", { enabled }),

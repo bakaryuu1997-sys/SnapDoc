@@ -148,6 +148,14 @@ export default function CommandPalette() {
       action: () => { ipc.pickAndOpenVideo().catch((e) => showError(e)); },
     },
     {
+      id: "open-guide",
+      category: t("commandPalette.categorySystem", "Hệ thống"),
+      icon: "📖",
+      title: t("commandPalette.openGuide", "Hướng dẫn sử dụng"),
+      subtitle: t("commandPalette.openGuideDesc", "Mở trang hướng dẫn đầy đủ (sửa/thêm/xoá được)"),
+      action: () => { ipc.openGuide().catch(() => {}); },
+    },
+    {
       id: "open-settings",
       category: t("commandPalette.categorySystem", "Hệ thống"),
       icon: "⚙️",
@@ -291,7 +299,7 @@ export default function CommandPalette() {
           <span style={{ opacity: 0.7 }}>
             ↑↓ Điều hướng · ↵ Chọn · Esc Đóng
           </span>
-          <span style={{ color: "#f59e0b", fontWeight: 600 }}>SnapDoc v3.9.3</span>
+          <span style={{ color: "#f59e0b", fontWeight: 600 }}>SnapDoc v3.9.4</span>
         </div>
       </div>
     </div>

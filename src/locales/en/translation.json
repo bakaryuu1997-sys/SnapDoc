@@ -229,7 +229,9 @@
     "quick": "Quick",
     "recordFull": "Record Screen",
     "recordWindow": "Record Window",
-    "recordRegion": "Record Region"
+    "recordRegion": "Record Region",
+    "guide": "User guide",
+    "guideTooltip": "Open the full user guide (you can edit, add or delete content)"
   },
   "overlay": {
     "dragToSelect": "Drag to select area • Hover a window and click to capture it • Esc / right-click to cancel",
@@ -783,5 +785,9 @@
     "modelBaseShort": "Fast",
     "modelSmallShort": "Balanced",
     "modelTurboShort": "Most accurate"
+  },
+  "commandPalette": {
+    "openGuide": "User guide",
+    "openGuideDesc": "Open the full guide page (editable)"
   }
 }

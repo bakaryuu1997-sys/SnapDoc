@@ -249,9 +249,7 @@ export default function GifExportModal({
 
     try {
       await ipc.exportVideoGif(filePath, savePath, buildOptions());
-      if (settings) {
-        ipc.setSettings({ ...settings, lastGifSaveAsDir: dirnameOf(savePath) }).catch(() => {});
-      }
+      ipc.patchSettings({ lastGifSaveAsDir: dirnameOf(savePath) }).catch(() => {});
       onFlash?.(t("gifExport.savedToast"));
       onClose();
     } catch (e) {

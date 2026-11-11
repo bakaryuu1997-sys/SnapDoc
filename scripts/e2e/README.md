@@ -26,6 +26,8 @@ Một số kịch bản (`s09`, `s10`) có đường dẫn tuyệt đối tới 
 
 `s12_captions_background.mjs` kiểm tra phụ đề chạy nền (popup tiến độ, đóng Editor giữa chừng không mất kết quả, tải nhiều model một lượt, huỷ). Tải thật `base` + `small` (~250 MB, ~4 phút). Lưu ý khi viết kịch bản CDP: đừng `await` lệnh `close_self` (cửa sổ bị huỷ nên không bao giờ trả lời → script treo); phím Esc qua CDP bị bỏ nếu phần tử đang focus là nút vừa bị disable — đóng hộp thoại bằng cách click nút ✕; Editor còn mở từ lần chạy trước giữ state cũ → đóng hẳn rồi mở lại đầu mỗi kịch bản.
 
+`s13_mcp.mjs` kiểm tra MCP server cho AI agent (HTTP + cầu stdio), công tắc quyền ghi, nhật ký, xác nhận thao tác phá huỷ và các đường đưa video vào app. Đặt `E2E_EXE` = đường dẫn `snapdoc.exe` của bản e2e để test cầu stdio. Hộp thoại xác nhận (Yes/No gốc của Windows) được bấm bằng `click_dialog.ps1` (UI Automation, không chụp màn hình). Các thao tác "ghi đè bản gốc" chỉ chạy trên BẢN SAO video trong thư mục tạm. Kéo-thả được mô phỏng bằng cách phát sự kiện `tauri://drag-drop` (không thể kéo file thật qua CDP).
+
 ## Không tự động hoá (cần test tay)
 
 Chọn vùng/cuộn/quay màn hình, thumbnail sau chụp, tray, phím tắt toàn cục, OAuth Google thật, camera thật — vì chạm vào màn hình/camera/tài khoản của bạn.

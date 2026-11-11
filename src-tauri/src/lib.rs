@@ -1,5 +1,6 @@
 mod capture;
 mod captions;
+mod guide;
 mod clipboard;
 mod commands;
 mod drive;
@@ -190,6 +191,8 @@ pub fn run() {
             drive::drive_is_connected,
             drive::drive_disconnect,
             drive::drive_upload,
+            guide::open_guide,
+            commands::patch_settings,
             captions::captions_status,
             captions::captions_setup,
             captions::captions_cancel,
@@ -482,8 +485,9 @@ pub fn run() {
                 let first_run = !storage::settings::exists(&config_dir);
                 let mut settings = storage::settings::load(&config_dir);
                 if first_run {
-                    settings["launchAtLogin"] = serde_json::Value::Bool(true);
-                    let _ = storage::settings::save(&config_dir, &settings);
+                    if let Ok(merged) = storage::settings::patch(&config_dir, &serde_json::json!({ "launchAtLogin": true })) {
+                        settings = merged;
+                    }
                 }
                 let want_enabled = settings["launchAtLogin"].as_bool().unwrap_or(true);
                 let autolaunch = handle.autolaunch();

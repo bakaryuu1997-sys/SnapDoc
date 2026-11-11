@@ -142,8 +142,16 @@ pub(crate) fn restore_history_item_sync(app: &AppHandle, id: &str) -> Result<(),
 
 fn permanently_delete_history_item_sync(app: &AppHandle, id: &str) -> Result<(), String> {
     let rec = get_history_item_sync(app, id)?;
-    // Lỗi xoá file (đang bị app khác giữ, quyền...) KHÔNG chặn xoá row DB —
-    // giữ row sẽ làm thùng rác không bao giờ dọn được — nhưng phải log lại:
+    // XOÁ DÒNG DB TRƯỚC, file sau. Ngược lại (file trước) mà crash/mất điện giữa chừng thì còn
+    // "dòng ma" trỏ tới file không còn — Thư viện báo lỗi tải ảnh. DB trước thì xấu nhất chỉ để lại
+    // file mồ côi vô hình trên đĩa (có log).
+    {
+        let st = state(app)?;
+        let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
+        conn.execute("DELETE FROM history WHERE id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+    }
+    // Lỗi xoá file (đang bị app khác giữ, quyền...) KHÔNG làm hỏng thao tác — nhưng phải log lại:
     // trước đây nuốt im lặng, file mồ côi nằm lại trên đĩa mà không dấu vết.
     for path in [&rec.asset_path, &rec.thumb_path] {
         if let Err(e) = std::fs::remove_file(path) {
@@ -161,10 +169,6 @@ fn permanently_delete_history_item_sync(app: &AppHandle, id: &str) -> Result<(),
     if legacy_telem.exists() {
         let _ = std::fs::remove_file(&legacy_telem);
     }
-    let st = state(app)?;
-    let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
-    conn.execute("DELETE FROM history WHERE id = ?1", [id])
-        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -239,6 +243,14 @@ fn delete_trash_items_batch(app: &AppHandle, where_clause: &str, params: &[&dyn 
 
     let count = items.len() as u32;
 
+    // DB trước, file sau (xem `permanently_delete_history_item_sync`).
+    {
+        let st = state(app)?;
+        let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
+        let sql = format!("DELETE FROM history WHERE {where_clause}");
+        conn.execute(&sql, params).map_err(|e| e.to_string())?;
+    }
+
     for item in &items {
         for path in [&item.asset_path, &item.thumb_path] {
             if let Err(e) = std::fs::remove_file(path) {
@@ -248,11 +260,6 @@ fn delete_trash_items_batch(app: &AppHandle, where_clause: &str, params: &[&dyn 
             }
         }
     }
-
-    let st = state(app)?;
-    let conn = st.conn.lock().map_err(|_| "History DB lock poisoned".to_string())?;
-    let sql = format!("DELETE FROM history WHERE {where_clause}");
-    conn.execute(&sql, params).map_err(|e| e.to_string())?;
 
     Ok(count)
 }
@@ -500,12 +507,12 @@ fn save_history_doc_sync(
     std::fs::write(&rec.thumb_path, &thumb_bytes)
         .map_err(|e| format!("Ghi thumbnail thất bại: {e}"))?;
 
-    // Chuyển item PNG cũ sang `.snapdoc`: chỉ xoá file cũ SAU KHI file mới đã
-    // ghi xong (write_snapdoc là atomic), để một lần lỗi không mất cả hai.
+    // Chuyển item PNG cũ sang `.snapdoc`. THỨ TỰ QUAN TRỌNG: (1) file mới đã ghi xong (atomic),
+    // (2) cập nhật DB trỏ sang file mới, (3) MỚI xoá file cũ. Trước đây xoá file cũ trước khi
+    // UPDATE DB: nếu UPDATE lỗi (khoá DB hỏng, đĩa đầy…) thì dòng History vẫn trỏ tới file đã bị
+    // xoá → ảnh biến mất khỏi Thư viện dù dữ liệu mới nằm ngay đó. Giờ lỗi ở bước nào thì vẫn còn
+    // ít nhất 1 bản hợp lệ để mở.
     let asset_path_str = new_path.to_string_lossy().to_string();
-    if asset_path_str != rec.asset_path {
-        let _ = std::fs::remove_file(&old_path);
-    }
     let file_size = std::fs::metadata(&new_path).ok().map(|m| m.len() as i64);
 
     let st = state(app)?;
@@ -516,6 +523,9 @@ fn save_history_doc_sync(
             rusqlite::params![now_ms(), w, h, file_size, asset_path_str, id],
         )
         .map_err(|e| e.to_string())?;
+    }
+    if asset_path_str != rec.asset_path {
+        let _ = std::fs::remove_file(&old_path);
     }
     let _ = app.emit("snapdoc:changed", id);
     get_history_item_sync(app, id)

@@ -844,8 +844,7 @@ export default function Editor() {
         videoTrimState.crop,
       );
       if (outputPath) {
-        const settings = await ipc.getSettings().catch(() => null);
-        if (settings) ipc.setSettings({ ...settings, lastVideoSaveAsDir: dirnameOf(outputPath) }).catch(() => {});
+        ipc.patchSettings({ lastVideoSaveAsDir: dirnameOf(outputPath) }).catch(() => {});
       }
       // Bản gốc KHÔNG đổi (chỉ thêm 1 record mới) nên `videoTrimState` giữ
       // nguyên — chốt signature lại để trạng thái cắt hiện tại được coi là

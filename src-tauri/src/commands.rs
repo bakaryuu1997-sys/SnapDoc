@@ -785,6 +785,22 @@ pub fn set_settings(app: AppHandle, value: Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Ghi MỘT HOẶC VÀI key (xem `storage::settings::patch`): backend đọc bản mới nhất, gộp rồi ghi
+/// nguyên tử — thay cho kiểu "đọc cả object → sửa 1 key → ghi đè cả object" dễ làm mất thay đổi
+/// đồng thời. Trả về settings sau khi gộp.
+#[tauri::command]
+pub fn patch_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("Không tìm thấy thư mục config: {e}"))?;
+    let merged = storage::settings::patch(&dir, &patch)?;
+    use tauri::Emitter;
+    let _ = app.emit("settings-changed", &merged);
+    tray::rebuild_menu(&app);
+    Ok(merged)
+}
+
 #[tauri::command]
 pub fn check_screen_permission() -> bool {
     permissions::can_capture()

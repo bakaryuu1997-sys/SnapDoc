@@ -57,4 +57,34 @@ describe("findSensitiveBoxes", () => {
     const words = [w("0912", 10, 10, 50), w("345", 70, 200, 40), w("678", 120, 400, 40)];
     expect(findSensitiveBoxes(words)).toEqual([]);
   });
+
+  it("bắt SĐT Nhật (di động 090-xxxx-xxxx, +81) và mã bưu điện 〒", () => {
+    expect(kinds([w("09012345678", 10, 10, 160)])).toEqual(["phone"]);
+    expect(kinds([w("090-1234-5678", 10, 10, 160)])).toEqual(["phone"]);
+    expect(kinds([w("+819012345678", 10, 10, 160)])).toEqual(["phone"]);
+    expect(kinds([w("〒150-0002", 10, 10, 120)])).toEqual(["postal"]);
+    expect(kinds([w("150-0002", 10, 10, 120)])).toEqual(["postal"]);
+  });
+
+  it("My Number: chỉ báo khi 12 số có chữ số kiểm tra đúng", () => {
+    // 12345678901 + số kiểm tra tính theo thuật toán mod 11 của mã số cá nhân.
+    const base = "12345678901";
+    let sum = 0;
+    for (let n = 1; n <= 11; n++) sum += Number(base[11 - n]) * (n <= 6 ? n + 1 : n - 5);
+    const r = sum % 11;
+    const check = r <= 1 ? 0 : 11 - r;
+    const valid = base + String(check);
+    const invalid = base + String((check + 1) % 10);
+    expect(kinds([w(valid, 10, 10, 160)])).toEqual(["my_number"]);
+    expect(kinds([w(invalid, 10, 10, 160)])).not.toContain("my_number");
+    // viết cách nhóm 4-4-4 (bị OCR tách từ)
+    const spaced = findSensitiveBoxes([w(valid.slice(0, 4), 10, 10, 50), w(valid.slice(4, 8), 70, 10, 50), w(valid.slice(8), 130, 10, 50)]);
+    expect(spaced.map((b) => b.kind)).toEqual(["my_number"]);
+  });
+
+  it("bắt chuỗi bí mật dài không theo mẫu nào, nhưng không báo nhầm từ/tên file bình thường", () => {
+    expect(kinds([w("a8F3kP0zQ9vLm2XcT7yB4nR1wE6uH5jD", 10, 10, 400)])).toEqual(["token"]);
+    expect(kinds([w("SnapDocUserGuideDocumentation2026Final", 10, 10, 400)])).toEqual([]);
+    expect(kinds([w("configuration_management_settings", 10, 10, 400)])).toEqual([]);
+  });
 });

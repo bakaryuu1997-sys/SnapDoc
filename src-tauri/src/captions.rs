@@ -72,6 +72,19 @@ fn model_url(file: &str) -> String {
     format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{file}")
 }
 
+/// Mô hình VAD (Silero, ~0,9 MB): bỏ qua đoạn im lặng/nhạc nền TRƯỚC khi nhận diện →
+/// hết ảo giác kiểu "Cảm ơn các bạn đã xem" trên đoạn lặng, tránh vòng lặp làm đứng ở
+/// một % rất lâu, và nhanh hơn rõ với video có nhiều khoảng lặng. Không bắt buộc: thiếu
+/// (tải lỗi/offline) thì vẫn nhận diện bình thường, chỉ kém chính xác hơn.
+const VAD_FILE: &str = "ggml-silero-v5.1.2.bin";
+const VAD_URL: &str = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin";
+const VAD_SIZE: u64 = 885_098;
+const VAD_SHA256: &str = "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf";
+
+fn vad_ready(dir: &Path) -> bool {
+    fs::metadata(dir.join(VAD_FILE)).map(|m| m.is_file() && m.len() == VAD_SIZE).unwrap_or(false)
+}
+
 /* ───────────── Kiểu dữ liệu trao đổi với frontend ───────────── */
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -754,8 +767,40 @@ fn split_long(seg: CaptionSegment) -> Vec<CaptionSegment> {
     out
 }
 
+fn norm_text(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
+}
+
+/// Whisper đôi khi kẹt vòng lặp: lặp NGUYÊN 1 câu hàng chục lần ("Cảm ơn các bạn đã xem…").
+/// ≥ 3 dòng liên tiếp giống hệt (bỏ qua hoa/thường, dấu câu) → chỉ giữ dòng đầu. Hai dòng giống
+/// nhau liền kề là bình thường (vd "Vâng. Vâng.") nên được giữ nguyên. Cũng bỏ dòng rỗng/0 ms.
+fn collapse_repeats(raw: Vec<CaptionSegment>) -> Vec<CaptionSegment> {
+    let mut out: Vec<CaptionSegment> = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        let key = norm_text(&raw[i].text);
+        if key.is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut j = i + 1;
+        while j < raw.len() && norm_text(&raw[j].text) == key {
+            j += 1;
+        }
+        let run = j - i;
+        if run >= 3 {
+            out.push(raw[i].clone());
+        } else {
+            out.extend(raw[i..j].iter().cloned());
+        }
+        i = j;
+    }
+    out.retain(|s| s.end_ms > s.start_ms);
+    out
+}
+
 fn normalize_segments(raw: Vec<CaptionSegment>) -> Vec<CaptionSegment> {
-    raw.into_iter().flat_map(split_long).collect()
+    collapse_repeats(raw).into_iter().flat_map(split_long).collect()
 }
 
 /* ───────────── Kiểm tra tham số từ webview ───────────── */
@@ -824,11 +869,44 @@ fn ensure_not_same_file(input: &Path, output: &Path) -> Result<(), String> {
 
 /* ───────────── Pipeline: audio → whisper → SRT ───────────── */
 
+/// Đếm luồng âm thanh từ stderr của `ffmpeg -i <file>` (không có file ra → thoát mã 1 nhưng vẫn in đủ luồng).
+fn count_audio_streams(stderr: &str) -> usize {
+    stderr
+        .lines()
+        .filter(|l| l.trim_start().starts_with("Stream #") && l.contains(": Audio:"))
+        .count()
+}
+
+/// Video quay "Mic + Hệ thống" hoặc video nhập từ ngoài có thể chứa NHIỀU luồng âm thanh;
+/// chỉ lấy luồng đầu sẽ bỏ sót lời nói nằm ở luồng khác (kết quả: phụ đề trống/thiếu).
+/// Trộn tất cả (tối đa 8) thành 1 kênh mono 16 kHz.
+fn audio_filter_args(streams: usize) -> Vec<String> {
+    let n = streams.clamp(1, 8);
+    if n == 1 {
+        return vec!["-map".into(), "0:a:0".into()];
+    }
+    let inputs: String = (0..n).map(|i| format!("[0:a:{i}]")).collect();
+    vec![
+        "-filter_complex".into(),
+        format!("{inputs}amix=inputs={n}:duration=longest[a]"),
+        "-map".into(),
+        "[a]".into(),
+    ]
+}
+
 fn extract_audio(ffmpeg: &Path, video: &Path, wav: &Path) -> Result<(), String> {
+    let streams = {
+        let mut probe = Command::new(ffmpeg);
+        probe.args(["-hide_banner", "-i"]).arg(video);
+        crate::record::proc::run(&mut probe, Duration::from_secs(30))
+            .map(|o| count_audio_streams(&o.stderr))
+            .unwrap_or(1)
+    };
     let mut cmd = Command::new(ffmpeg);
     cmd.args(["-y", "-hide_banner", "-loglevel", "error", "-i"])
         .arg(video)
-        .args(["-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le"])
+        .args(audio_filter_args(streams))
+        .args(["-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le"])
         .arg(wav);
     crate::record::proc::run_ok(&mut cmd, crate::record::proc::timeout_for_file(video), "Tách âm thanh")
         .map(|_| ())
@@ -864,6 +942,65 @@ struct WhisperRun {
     language: Option<String>,
 }
 
+/// `whisper-cli.exe` đọc tham số dòng lệnh theo bảng mã ANSI: đường dẫn có ký tự ngoài ASCII (rất hay
+/// gặp — tên người dùng Windows tiếng Việt như `C:\Users\Nguyễn An\...`) bị biến thành `?` và Whisper
+/// báo "input file not found" / "failed to open model". Đã tái hiện bằng bản whisper-cli v1.9.2 thật.
+/// Trả về đường dẫn THUẦN ASCII trỏ tới cùng file: giữ nguyên nếu đã ASCII, ngược lại dùng tên ngắn 8.3 của
+/// Windows (`GetShortPathNameW`). Lỗi nếu ổ đĩa tắt tạo tên 8.3 — kèm hướng dẫn rõ ràng.
+fn ascii_cli_path(p: &Path) -> Result<PathBuf, String> {
+    if p.to_str().map(|s| s.is_ascii()).unwrap_or(false) {
+        return Ok(p.to_path_buf());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetShortPathNameW(long: *const u16, short: *mut u16, cch: u32) -> u32;
+        }
+        let wide: Vec<u16> = p.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        // SAFETY: `wide` kết thúc bằng NUL; buffer đầu ra có đúng `need` phần tử như API yêu cầu.
+        unsafe {
+            let need = GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0);
+            if need > 0 {
+                let mut buf = vec![0u16; need as usize];
+                let n = GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), need);
+                if n > 0 && n < need {
+                    let short = String::from_utf16_lossy(&buf[..n as usize]);
+                    if short.is_ascii() {
+                        return Ok(PathBuf::from(short));
+                    }
+                }
+            }
+        }
+    }
+    Err(format!(
+        "Đường dẫn chứa ký tự có dấu và Windows không tạo được tên ngắn (8.3) cho nó, nên Whisper không đọc được: {}. \
+         Hãy chuyển thư mục dữ liệu của SnapDoc sang đường dẫn không dấu hoặc bật tạo tên 8.3 cho ổ đĩa (fsutil 8dot3name).",
+        p.display()
+    ))
+}
+
+/// Thông báo lỗi hữu ích từ log của whisper-cli: khi tham số sai nó in cả bảng trợ giúp dài SAU dòng lỗi,
+/// nên lấy 6 dòng cuối chỉ thấy "usage/options". Ưu tiên các dòng có "error"/"failed".
+fn useful_error(log: &[String]) -> String {
+    let errs: Vec<String> = log
+        .iter()
+        .filter(|l| {
+            let t = l.to_lowercase();
+            t.contains("error") || t.contains("failed") || t.contains("cuda") && t.contains("out of memory")
+        })
+        .cloned()
+        .collect();
+    if errs.is_empty() {
+        tail_lines(log, 6)
+    } else {
+        tail_lines(&errs, 5)
+    }
+}
+
+/// Chạy Whisper. Nếu lần đầu thất bại (thường do GPU/CUDA: thiếu VRAM, driver cũ, DLL lỗi)
+/// thì TỰ chạy lại 1 lần bằng CPU (`--no-gpu`) thay vì báo lỗi ngay.
 fn run_whisper(
     slot: &'static Slot,
     cli: &Path,
@@ -871,28 +1008,90 @@ fn run_whisper(
     wav: &Path,
     lang: &str,
     out_base: &Path,
+    vad: Option<&Path>,
     mut on_progress: impl FnMut(u32),
+) -> Result<WhisperRun, String> {
+    match run_whisper_once(slot, cli, model, wav, lang, out_base, vad, false, &mut on_progress) {
+        Ok(r) => Ok(r),
+        Err(first) if first != CANCELLED_MSG && !cancelled(slot) => {
+            eprintln!("[SnapDoc][captions] Whisper lỗi, thử lại bằng CPU: {first}");
+            run_whisper_once(slot, cli, model, wav, lang, out_base, vad, true, &mut on_progress)
+                .map_err(|second| format!("{first}\n(Đã thử lại bằng CPU nhưng vẫn lỗi: {second})"))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Các tham số làm Whisper ít "ảo giác"/lặp câu hơn (tách riêng để test).
+fn whisper_quality_args(vad: Option<&Path>) -> Vec<String> {
+    // -mc 0: không mang ngữ cảnh đoạn trước sang đoạn sau — nguyên nhân kinh điển của vòng lặp
+    //        lặp 1 câu hàng chục lần và đứng ở 1 % rất lâu.
+    // -sns : chặn token không phải lời nói (♪, [Music]…).
+    // -ml 72 -sow: tách dòng theo MỐC THỜI GIAN THẬT của từng từ (không phải chia đều theo số ký tự
+    //        như `split_long`), nên phụ đề bám sát giọng nói; ngắt ở ranh giới từ.
+    let mut a: Vec<String> =
+        vec!["-mc".into(), "0".into(), "-sns".into(), "-ml".into(), "72".into(), "-sow".into()];
+    if let Some(v) = vad {
+        // Đoạn lặng ≥ 0,5 s mới tách; đệm 0,1 s hai đầu để không cụt đầu/đuôi từ; mỗi đoạn tối đa 25 s.
+        a.extend(
+            ["--vad", "-vm"].iter().map(|s| s.to_string()),
+        );
+        a.push(v.to_string_lossy().to_string());
+        a.extend(
+            ["-vt", "0.5", "-vsd", "500", "-vp", "100", "-vmsd", "25"].iter().map(|s| s.to_string()),
+        );
+    }
+    a
+}
+
+fn run_whisper_once(
+    slot: &'static Slot,
+    cli: &Path,
+    model: &Path,
+    wav: &Path,
+    lang: &str,
+    out_base: &Path,
+    vad: Option<&Path>,
+    no_gpu: bool,
+    on_progress: &mut impl FnMut(u32),
 ) -> Result<WhisperRun, String> {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
         .saturating_sub(1) // chừa 1 nhân cho giao diện
         .clamp(2, 8);
-    let mut cmd = Command::new(cli);
-    if let Some(dir) = cli.parent() {
-        cmd.current_dir(dir);
+    // File vào/ra (wav, srt) nằm chung 1 thư mục tạm do app tạo: chạy với cwd = thư mục đó và dùng
+    // TÊN TƯƠNG ĐỐI thuần ASCII ("audio.wav", "out") — cwd truyền bằng UTF-16 nên có dấu cũng an toàn.
+    // Riêng model/VAD (nằm ở thư mục dữ liệu của app, có thể chứa tên người dùng có dấu) dùng tên 8.3.
+    let work_dir = wav.parent().ok_or("Đường dẫn file âm thanh không hợp lệ")?;
+    let (Some(wav_name), Some(out_name)) = (wav.file_name(), out_base.file_name()) else {
+        return Err("Đường dẫn file âm thanh/kết quả không hợp lệ".into());
+    };
+    if out_base.parent() != Some(work_dir) {
+        return Err("Lỗi nội bộ: file âm thanh và file kết quả phải cùng thư mục".into());
     }
+    let model_arg = ascii_cli_path(model)?;
+    let vad_arg = match vad {
+        Some(v) => Some(ascii_cli_path(v)?),
+        None => None,
+    };
+    let mut cmd = Command::new(cli);
+    cmd.current_dir(work_dir);
     cmd.arg("-m")
-        .arg(model)
+        .arg(&model_arg)
         .arg("-f")
-        .arg(wav)
+        .arg(wav_name)
         .args(["-l", lang, "-osrt", "-pp", "-t"])
         .arg(threads.to_string())
         .arg("-of")
-        .arg(out_base)
+        .arg(out_name)
+        .args(whisper_quality_args(vad_arg.as_deref()))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+    if no_gpu {
+        cmd.arg("--no-gpu");
+    }
 
     let (_out, err) = spawn_tracked(slot, &mut cmd, true)?;
     let mut log: Vec<String> = Vec::new();
@@ -919,7 +1118,7 @@ fn run_whisper(
     if !status.success() {
         return Err(format!(
             "Whisper thất bại ({status}): {}",
-            tail_lines(&log, 6)
+            useful_error(&log)
         ));
     }
     let srt_path = out_base.with_extension("srt");
@@ -1377,8 +1576,19 @@ fn transcribe_blocking(
         return Err(CANCELLED_MSG.into());
     }
 
+    // VAD: tải 0,9 MB nếu thiếu; lỗi tải thì bỏ qua (nhận diện không VAD vẫn chạy được).
+    let vad_dir = models_dir(app);
+    if !vad_ready(&vad_dir) {
+        let _ = download_verified(VAD_URL, VAD_SHA256, VAD_SIZE, &vad_dir.join(VAD_FILE), &TRANSCRIBE.cancel, |_, _| {});
+        if cancelled(&TRANSCRIBE) {
+            return Err(CANCELLED_MSG.into());
+        }
+    }
+    let vad_path = vad_dir.join(VAD_FILE);
+    let vad = if vad_ready(&vad_dir) { Some(vad_path.as_path()) } else { None };
+
     let (a, c) = (app.clone(), ctx.clone());
-    let run = run_whisper(&TRANSCRIBE, &cli, &model, &wav, lang, &tmp.0.join("out"), move |p| {
+    let run = run_whisper(&TRANSCRIBE, &cli, &model, &wav, lang, &tmp.0.join("out"), vad, move |p| {
         report(&a, &c, "transcribe", p as u64, 100)
     })?;
     let raw = fs::read_to_string(&run.srt_path).map_err(|e| format!("Không đọc được kết quả: {e}"))?;
@@ -1601,7 +1811,7 @@ mod tests {
         assert!(wav.metadata().unwrap().len() > 10_000);
 
         let mut last = 0;
-        let run = run_whisper(&TRANSCRIBE, &cli, &model, &wav, "en", &tmp.0.join("out"), |p| last = p).expect("whisper");
+        let run = run_whisper(&TRANSCRIBE, &cli, &model, &wav, "en", &tmp.0.join("out"), None, |p| last = p).expect("whisper");
         assert_eq!(last, 100);
         let segs = normalize_segments(parse_srt(&fs::read_to_string(&run.srt_path).unwrap()));
         println!("SEGMENTS: {segs:#?}");
@@ -1731,6 +1941,102 @@ mod tests {
         let got = captions_take_outcome(key.clone()).expect("còn kết quả");
         assert_eq!(got.segments.len(), 1);
         assert!(captions_take_outcome(key).is_none(), "chỉ nhận được 1 lần");
+    }
+
+    #[test]
+    fn collapses_runaway_repetition_but_keeps_legit_double() {
+        let looped: Vec<CaptionSegment> = (0..12)
+            .map(|i| seg(i * 1000, i * 1000 + 900, if i % 2 == 0 { "Cảm ơn các bạn đã xem." } else { "cảm ơn các bạn đã xem" }))
+            .collect();
+        let out = collapse_repeats(looped);
+        assert_eq!(out.len(), 1, "vòng lặp 12 lần phải còn 1 dòng");
+        assert_eq!(out[0].start_ms, 0);
+
+        let double = vec![seg(0, 500, "Vâng."), seg(600, 1100, "Vâng."), seg(1200, 2000, "Tiếp theo nhé")];
+        assert_eq!(collapse_repeats(double.clone()), double, "2 dòng giống nhau liền kề là bình thường");
+
+        let empties = vec![seg(0, 0, "x"), seg(0, 900, "  . "), seg(1000, 2000, "Ok")];
+        assert_eq!(collapse_repeats(empties), vec![seg(1000, 2000, "Ok")]);
+    }
+
+    #[test]
+    fn counts_audio_streams_and_builds_mix_filter() {
+        let err = "  Stream #0:0(und): Video: h264 (High)\n  Stream #0:1(und): Audio: aac (LC), 48000 Hz\n    Stream #0:2(und): Audio: aac (LC), 44100 Hz\n";
+        assert_eq!(count_audio_streams(err), 2);
+        assert_eq!(count_audio_streams("Stream #0:0: Video: h264"), 0);
+        assert_eq!(audio_filter_args(1), vec!["-map".to_string(), "0:a:0".into()]);
+        let f = audio_filter_args(2);
+        assert_eq!(f[0], "-filter_complex");
+        assert_eq!(f[1], "[0:a:0][0:a:1]amix=inputs=2:duration=longest[a]");
+        assert_eq!(audio_filter_args(99)[1].matches("[0:a:").count(), 8, "tối đa 8 luồng");
+    }
+
+    #[test]
+    fn quality_args_enable_vad_only_when_model_present() {
+        let none = whisper_quality_args(None);
+        assert!(none.contains(&"-mc".to_string()) && none.contains(&"-sns".to_string()));
+        assert!(!none.contains(&"--vad".to_string()));
+        let with = whisper_quality_args(Some(Path::new("C:/x/vad.bin")));
+        assert!(with.contains(&"--vad".to_string()));
+        assert!(with.windows(2).any(|w| w[0] == "-vm" && w[1].ends_with("vad.bin")));
+    }
+
+    #[test]
+    fn quality_args_split_lines_by_real_word_timestamps() {
+        let a = whisper_quality_args(None);
+        assert!(a.windows(2).any(|w| w[0] == "-ml" && w[1] == "72"));
+        assert!(a.contains(&"-sow".to_string()));
+    }
+
+    #[test]
+    fn ascii_paths_pass_through_unchanged() {
+        let p = Path::new("C:\\Users\\bob\\models\\ggml-base.bin");
+        assert_eq!(ascii_cli_path(p).unwrap(), p);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn accented_paths_become_ascii_8dot3_or_a_clear_error() {
+        // Bug thật: whisper-cli không đọc được đường dẫn có dấu (xem `ascii_cli_path`).
+        let d = std::env::temp_dir().join(format!("thư mục có dấu {}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(&d).unwrap();
+        let f = d.join("mô hình.bin");
+        fs::write(&f, b"x").unwrap();
+        match ascii_cli_path(&f) {
+            Ok(short) => {
+                assert!(short.to_str().unwrap().is_ascii(), "phải thuần ASCII: {short:?}");
+                assert_eq!(fs::read(&short).unwrap(), b"x", "phải trỏ đúng file");
+            }
+            Err(e) => assert!(e.contains("8.3"), "lỗi phải nói rõ nguyên nhân: {e}"),
+        }
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn useful_error_skips_the_help_text_that_follows_the_real_error() {
+        let log: Vec<String> = [
+            "error: input file not found 'x.wav'",
+            "error: no input files specified",
+            "usage: whisper-cli.exe [options] file0 file1 ...",
+            "  -h, --help   show this help message and exit",
+            "  -t N, --threads N  number of threads",
+            "  -p N, --processors N  number of processors",
+            "  -ot N, --offset-t N  time offset in milliseconds",
+            "  -on N, --offset-n N  segment index offset",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let msg = useful_error(&log);
+        assert!(msg.contains("input file not found") && !msg.contains("usage:"), "{msg}");
+        assert_eq!(useful_error(&["plain line".to_string()]), "plain line");
+    }
+
+    #[test]
+    fn vad_constants_are_sane() {
+        assert_eq!(VAD_SHA256.len(), 64);
+        assert!(VAD_URL.ends_with(VAD_FILE));
+        assert!(VAD_SIZE > 100_000 && VAD_SIZE < 5_000_000);
     }
 
     #[test]

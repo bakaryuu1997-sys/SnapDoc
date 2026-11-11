@@ -28,7 +28,13 @@ export default function Settings() {
     return "general";
   });
 
-  const pendingRef = useRef<S | null>(null);
+  // Các key đã đổi nhưng chưa ghi (gộp nhiều lần gõ). Chỉ gửi ĐÚNG những key này cho backend
+  // (`patch_settings`) — không ghi đè cả object bằng bản chụp cũ nên không làm mất thay đổi
+  // do cửa sổ khác (thanh chụp…) hoặc backend (lastRecordRegion…) vừa ghi.
+  const pendingRef = useRef<Partial<S> | null>(null);
+  // Riêng phím tắt: sau khi ghi còn phải `reloadShortcuts()`, nên không dùng chung với pendingRef
+  // (timer kia có thể đã ghi hộ và xoá mất bản vá → phím tắt không được đăng ký lại).
+  const pendingShortcutsRef = useRef<Partial<S> | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shortcutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -96,7 +102,7 @@ export default function Settings() {
         if (!prev) return prev;
         // Chỉ cập nhật defaultOutput từ bên ngoài nếu pending debounce không đang chạy
         // (pendingRef.current null = không có thay đổi chưa lưu từ Settings UI).
-        if (pendingRef.current !== null) return prev;
+        if (pendingRef.current !== null || pendingShortcutsRef.current !== null) return prev;
         const incoming = e.payload?.defaultOutput as S["defaultOutput"] | undefined;
         if (incoming && incoming !== prev.defaultOutput) {
           return { ...prev, defaultOutput: incoming };
@@ -128,10 +134,10 @@ export default function Settings() {
 
   if (!s) return <div className="solid-bg" style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>{t("common.loading")}</div>;
 
-  const persist = async (next: S) => {
+  const persist = async (patch: Partial<S>) => {
     setSaveStatus("saving");
     try {
-      await ipc.setSettings(next);
+      await ipc.patchSettings(patch);
       setSaveStatus("saved");
       window.setTimeout(() => setSaveStatus("idle"), 1500);
     } catch {
@@ -140,15 +146,16 @@ export default function Settings() {
     }
   };
 
-  const persistDebounced = (next: S, delay = 600) => {
-    pendingRef.current = next;
+  const persistDebounced = (patch: Partial<S>, delay = 600) => {
+    pendingRef.current = { ...(pendingRef.current ?? {}), ...patch };
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     setSaveStatus("saving");
     debounceTimer.current = setTimeout(async () => {
       const val = pendingRef.current;
       if (!val) return;
+      pendingRef.current = null;
       try {
-        await ipc.setSettings(val);
+        await ipc.patchSettings(val);
         setSaveStatus("saved");
         window.setTimeout(() => setSaveStatus("idle"), 1500);
       } catch {
@@ -158,15 +165,16 @@ export default function Settings() {
     }, delay);
   };
 
-  const persistShortcutsDebounced = (next: S) => {
-    pendingRef.current = next;
+  const persistShortcutsDebounced = (patch: Partial<S>) => {
+    pendingShortcutsRef.current = { ...(pendingShortcutsRef.current ?? {}), ...patch };
     if (shortcutTimer.current) clearTimeout(shortcutTimer.current);
     setSaveStatus("saving");
     shortcutTimer.current = setTimeout(async () => {
-      const val = pendingRef.current;
+      const val = pendingShortcutsRef.current;
       if (!val) return;
+      pendingShortcutsRef.current = null;
       try {
-        await ipc.setSettings(val);
+        await ipc.patchSettings(val);
         setSaveStatus("saved");
         window.setTimeout(() => setSaveStatus("idle"), 1500);
         await ipc.reloadShortcuts();
@@ -183,9 +191,9 @@ export default function Settings() {
   const update = (patch: Partial<S>, opts?: { debounce?: boolean; shortcuts?: boolean }) => {
     const next = { ...s, ...patch };
     setS(next);
-    if (opts?.shortcuts) persistShortcutsDebounced(next);
-    else if (opts?.debounce) persistDebounced(next);
-    else persist(next);
+    if (opts?.shortcuts) persistShortcutsDebounced(patch);
+    else if (opts?.debounce) persistDebounced(patch);
+    else persist(patch);
   };
 
   const pickDir = async () => {

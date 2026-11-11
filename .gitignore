@@ -31,3 +31,10 @@ secrets/
 
 # Ảnh chụp của bộ E2E
 scripts/e2e/shots/
+
+# Tài nguyên OCR/AI lớn tải riêng (không commit) — app vẫn cần chúng lúc build
+public/models/
+public/onnxruntime/
+public/tessdata/
+public/tesseract/
+*.log

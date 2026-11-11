@@ -124,7 +124,7 @@ export default function CaptionsModal({
   onSeekSource,
   onFlash,
 }: CaptionsModalProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const tt = useCallback(
     (key: string, def: string, opts?: Record<string, unknown>) =>
       t(`captions.${key}`, { defaultValue: def, ...opts }),
@@ -136,7 +136,14 @@ export default function CaptionsModal({
   const [modelId, setModelId] = useState<string>(() => readLS(MODEL_KEY) ?? "small");
   /** Các model được tick để tải (có thể tải nhiều model cùng lúc, lần lượt ở nền). */
   const [dlSel, setDlSel] = useState<string[]>(["small"]);
-  const [spoken, setSpoken] = useState<string>(() => readLS(LANG_KEY) ?? "auto");
+  // Lần đầu: mặc định theo ngôn ngữ của app (vi/en) thay vì "Tự nhận diện" — tự nhận diện
+  // hay nhầm ngôn ngữ ở video ngắn/ồn → phụ đề ra sai ngôn ngữ trông như "Whisper lỗi".
+  const [spoken, setSpoken] = useState<string>(() => {
+    const saved = readLS(LANG_KEY);
+    if (saved) return saved;
+    const app = (i18n.language || "").slice(0, 2).toLowerCase();
+    return LANGS.some((l) => l.code === app) ? app : "auto";
+  });
   const [matchEdits, setMatchEdits] = useState(true);
   const [job, setJob] = useState<Job>(null);
   const [exportProgress, setExportProgress] = useState<CaptionsProgress | null>(null);

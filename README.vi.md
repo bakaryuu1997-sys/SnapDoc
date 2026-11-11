@@ -1,364 +1,215 @@
 # SnapDoc
 
 <p>
-  <strong>Ngôn ngữ / Language:</strong> <a href="README.md">English</a> | <b>Tiếng Việt</b>
+  <strong>Language / Ngôn ngữ:</strong> <a href="README.md">English</a> | <b>Tiếng Việt</b>
 </p>
 
-Ứng dụng chụp ảnh màn hình, quay video màn hình & chú thích đa phương tiện cho **Windows + macOS**. Thiết kế ưu tiên tốc độ: phím tắt → chụp/quay → chú thích/cắt tỉa → lưu/sao chép.
+**SnapDoc** là ứng dụng Windows để **chụp màn hình, quay video, chú thích, trích chữ (OCR), tạo phụ đề bằng AI** và quản lý tất cả trong một Thư viện — mọi thứ xử lý **ngay trên máy bạn**, không cần tài khoản.
 
-> Công nghệ: **Tauri 2** (Rust) + **React 19 + TypeScript + Vite** + **Konva** (trình vẽ canvas) + **zustand** (quản lý state) + **FFmpeg** (xử lý video).  
-> Bộ máy chụp native: **ScreenCaptureKit** (macOS) & **Windows Graphics Capture (WGC)** (Windows).  
-> Xem thêm [ARCHITECTURE.md](ARCHITECTURE.md) về kiến trúc và [BUILD.md](BUILD.md) về hướng dẫn đóng gói phát hành.
+> Công nghệ: **Tauri 2** (Rust) + **React 19 + TypeScript + Vite** + **Konva** (canvas) + **FFmpeg** (video) + **Whisper.cpp** (phụ đề, chạy offline).
+> Kiến trúc: [ARCHITECTURE.md](ARCHITECTURE.md) · Đóng gói: [BUILD.md](BUILD.md) · Bảo mật: [SECURITY.md](SECURITY.md) · AI Agent: [docs/MCP_AGENT.md](docs/MCP_AGENT.md)
 
----
-
-## ⚡ Luồng hoạt động chính (Core Workflows)
-
-### 1️⃣ Chụp ảnh tức thì & Chú thích nhanh
-```text
-Phím tắt / Capture Bar → Chụp (7 chế độ) → Thumbnail popup → Chọn tác vụ (Editor / Copy / Lưu)
-                                               ↓
-                              Trình biên tập (15+ công cụ) → Lưu / Copy / Flatten
-```
-
-### 2️⃣ Quay màn hình kèm Hiển thị phím bấm & Âm thanh
-```text
-Phím tắt / Capture Bar → Chọn Vùng / Cửa sổ / Toàn màn hình → Đếm ngược 3-2-1
-                                                                  ↓
-        Quay video (Viền nhấp nháy + Bàn phím ảo HUD + Timer khay + Nút dừng nổi)
-                                                                  ↓
-                  → Xem lại & Cắt video CapCut-style → Lưu / Xuất GIF / Hủy bỏ
-```
-
-### 3️⃣ Chú thích ảnh & Tạo khung nền Mockup
-```text
-Từ Ảnh chụp / Thư viện / Mở file / Kéo thả → Editor (Canvas)
-                                                  ↓
-      Chú thích (Mũi tên, Đánh số, Che mờ) + Tạo nền Mockup (Gradient/Đổ bóng) + Ghép ảnh
-                                                  ↓
-                  → Lưu (.snapdoc không phá hủy / PNG) / Copy vào Clipboard
-```
-
-### 4️⃣ Cắt sửa Video & Xuất ảnh động GIF
-```text
-Xem lại video / Thư viện / Editor → Video Trimmer
-                                       ↓
-      Tách & Cắt đoạn (Q / W / Cmd+B) + Chèn Overlay (Chữ, Mũi tên, Che mờ) + Tắt tiếng
-                                       ↓
-           → Lưu (Ghi đè / Lưu bản mới) / Xuất Frame ảnh / Xuất ảnh GIF
-```
-
-### 5️⃣ Quản lý Thư viện lịch sử (Library)
-```text
-Mở Thư viện → Lọc theo Loại (Ảnh/Video), Chế độ chụp, Khoảng ngày → Dạng Lưới / Danh sách
-                                       ↓
-         Xem trước & Metadata → Đổi tên / Copy / Mở lại trong Editor / Cắt / Thùng rác
-```
+<p align="center">
+  <img src="docs/screenshots/03-editor.png" alt="Trình chỉnh sửa ảnh của SnapDoc" width="860">
+</p>
 
 ---
 
-## 🚀 Toàn bộ Chức năng & Công cụ
+## Mục lục
 
-### 📸 1. Chụp màn hình (Screenshot — 7 chế độ)
-| Chế độ | Mô tả | Phím tắt mặc định (macOS / Windows) |
-|---|---|---|
-| **Chụp vùng (Region)** | Kéo chuột chọn vùng linh hoạt với kính lúp phóng to từng pixel, toạ độ & kích thước | `Cmd+Shift+2` / `Ctrl+Shift+2` |
-| **Chụp cửa sổ (Window)** | Tự động phát hiện thông minh và highlight viền cửa sổ ứng dụng khi rê chuột | `Cmd+Shift+3` / `Ctrl+Shift+3` |
-| **Toàn màn hình (Full Screen)** | Chụp ngay màn hình hiện tại nơi con trỏ chuột đang đứng | `Cmd+Shift+1` / `Ctrl+Shift+1` |
-| **Tất cả màn hình (All Monitors)** | Ghép toàn bộ các màn hình hiển thị thành một bức ảnh toàn cảnh duy nhất | `Cmd+Shift+4` / `Ctrl+Shift+4` |
-| **Chụp & Copy (Capture & Copy)** | Kéo chọn vùng và copy ngay lập tức vào clipboard (con đường nhanh nhất) | `Cmd+Shift+C` / `Ctrl+Shift+C` |
-| **Chụp cuộn (Scrolling Capture)** | Tự động/thủ công cuộn trang web hoặc tài liệu dài để ghép thành một bức ảnh dài | `Cmd+Shift+6` / `Ctrl+Shift+6` |
-| **Chụp nhanh (Quick Capture)** | Đóng băng màn hình và cho phép vẽ chú thích trực tiếp lên màn hình, lưu/copy ngay | `Cmd+Shift+Q` / `Ctrl+Shift+Q` |
-
-- **Hẹn giờ chụp trễ:** Cấu hình đếm ngược (`0s`, `5s`, `10s`) trước khi chụp với giao diện đếm ngược trực quan.
-- **Hành vi sau khi chụp (Sau thao tác):**
-  - **Mở trình biên tập (Editor):** Mở ảnh vào studio để vẽ chú thích chi tiết.
-  - **Sao chép vào Clipboard:** Sao chép dữ liệu ảnh để paste nhanh vào chat hoặc tài liệu.
-  - **Lưu vào ổ đĩa:** Lưu trực tiếp vào thư mục lưu trữ đã thiết lập.
-  - **Lưu + Copy:** Thực hiện đồng thời cả hai: vừa lưu file vừa sao chép vào clipboard.
-  - **Copy + Mở Editor:** Sao chép vào clipboard trước rồi mở trình biên tập.
-- **Popup Thumbnail xem nhanh:** Nổi ở góc dưới màn hình ngay sau khi chụp, tích hợp nút thao tác nhanh (Mở Editor, Copy, Lưu, Xóa) và thanh thời gian tự ẩn.
+1. [Cài đặt nhanh](#-cài-đặt-nhanh)
+2. [Bắt đầu trong 5 phút](#-bắt-đầu-trong-5-phút)
+3. [Tính năng](#-tính-năng)
+4. [Phụ đề tự động (AI)](#-phụ-đề-tự-động-ai)
+5. [Kết nối AI Agent (MCP)](#-kết-nối-ai-agent-mcp)
+6. [Bảng phím tắt](#-bảng-phím-tắt)
+7. [Quyền riêng tư & bảo mật](#-quyền-riêng-tư--bảo-mật)
+8. [Xử lý sự cố](#-xử-lý-sự-cố)
+9. [Dành cho nhà phát triển](#-dành-cho-nhà-phát-triển)
 
 ---
 
-### 🎚️ 2. Thanh điều khiển nổi (Capture Bar)
-Lấy cảm hứng từ `Cmd+Shift+5` trên macOS, thanh nổi nằm căn giữa ở cạnh dưới của màn hình đang hoạt động:
-- **Kích hoạt:** `Cmd+Shift+5` (macOS) / `Ctrl+Shift+5` (Windows) hoặc từ menu Khay hệ thống.
-- **Chuyển đổi nhóm tác vụ:**
-  - **Nhóm Chụp ảnh:** Toàn màn hình, Cửa sổ, Vùng chọn, Toàn bộ màn hình, Chụp cuộn.
-  - **Nhóm Quay video:** Toàn màn hình, Cửa sổ, Vùng chọn.
-- **Menu cài đặt nhanh (Options Popover):**
-  - Chọn hành vi đầu ra mặc định (Mở Editor / Copy / Lưu / Lưu + Copy / Copy + Editor).
-  - Chọn nguồn âm thanh ghi âm (Tắt / Microphone / Âm thanh hệ thống / Cả hai).
-  - Bật/tắt hiển thị phím bấm trực tiếp (Keystroke HUD).
-  - Đặt hẹn giờ chụp (Không trễ / 5s / 10s).
-- **Nút Chụp / Quay một chạm & Phím đóng (`Esc`).**
+## 📦 Cài đặt nhanh
+
+**Yêu cầu:** Windows 10/11 64-bit, [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (Windows 11 đã có sẵn). Nên có ≥ 8 GB RAM nếu dùng phụ đề AI với model lớn.
+
+1. Tải bộ cài `SnapDoc_<phiên bản>_x64-setup.exe` (thư mục `release/` của dự án).
+2. Chạy file, làm theo trình cài đặt. SnapDoc tự chạy nền và hiện biểu tượng ở khay hệ thống (cạnh đồng hồ).
+3. Lần đầu mở, Windows có thể hỏi quyền (ghi màn hình, camera/micro nếu bạn dùng) — hãy cho phép.
+
+> ℹ️ Bản cài hiện **chưa ký số** (code signing), nên Windows SmartScreen có thể cảnh báo “Unknown publisher”: bấm **More info → Run anyway**. Nếu phát hành rộng rãi, nên mua chứng chỉ ký mã — xem [BUILD.md](BUILD.md).
+
+Gỡ cài đặt: *Settings → Apps → SnapDoc → Uninstall*. Dữ liệu (Thư viện, model phụ đề) nằm ở `%APPDATA%\com.snapdoc.app` và `%LOCALAPPDATA%\com.snapdoc.app`; trình gỡ không xoá chúng — hãy tự xoá hai thư mục này nếu muốn dọn sạch.
 
 ---
 
-### 🎥 3. Quay video màn hình & Hiển thị phím bấm
-- **Phạm vi quay:** Tùy chọn kéo vùng bất kỳ, chọn một cửa sổ ứng dụng cụ thể hoặc toàn màn hình.
-- **Hiệu năng cao:** Khung hình 30fps mượt mà, mã hóa phần cứng tối ưu thông qua FFmpeg.
-- **Ghi âm đa nguồn:**
-  - **Tắt:** Chỉ ghi hình, không ghi âm.
-  - **Microphone:** Thu giọng nói qua micro của thiết bị.
-  - **Âm thanh hệ thống:** Thu âm thanh phát ra từ máy tính (WASAPI Loopback trên Windows / ScreenCaptureKit audio trên macOS).
-  - **Cả hai:** Ghi đồng thời cả âm thanh máy tính và giọng nói qua micro.
-- **Bàn phím ảo trực tiếp trên màn hình (Keycaster / Keystroke HUD Overlay):**
-  - Tự động hiển thị các phím gõ và tổ hợp phím tắt theo thời gian thực khi đang quay video.
-  - Huy hiệu phím chuẩn phong cách Apple (`⌘ Cmd`, `⌥ Opt`, `⌃ Ctrl`, `⇧ Shift`, `⊞ Win`, `⎋ Esc`, `⏎ Enter`, `␣ Space`...).
-  - Tích hợp quyền Accessibility API trên macOS.
-- **Hỗ trợ trực quan khi quay:**
-  - Viền màu nhấp nháy bao quanh ranh giới khu vực đang quay (`record-border`).
-  - Widget nổi tạm dừng/dừng quay trên màn hình (`record-stop-control`).
-  - Biểu tượng khay hệ thống kèm đồng hồ đếm thời gian quay thực tế.
-  - Đếm ngược `3.. 2.. 1..` trước khi bắt đầu bấm máy.
-  - Tự động ẩn cửa sổ SnapDoc khỏi video quay (`recordSelf`).
-- **Quy trình kiểm tra bắt buộc (Review Screen):** Khi dừng quay, video tự động chuyển vào màn hình biên tập để xem và cắt gọt (không lưu bừa bãi khi chưa duyệt).
+## 🚀 Bắt đầu trong 5 phút
 
----
-
-### ✂️ 4. Biên tập & Cắt video chuyên sâu (CapCut-Style Video Trimmer)
-Được tích hợp trực tiếp trong cửa sổ Editor và Review:
-- **Cắt tỉa phân đoạn không phá hủy (Multi-segment Trim):**
-  - Chia đoạn tại vị trí con trỏ phát: `Ctrl/Cmd+B`
-  - Xóa phân đoạn đang chọn: `Delete` / `Backspace`
-  - Cắt bỏ phần đầu đoạn đến vị trí hiện tại: `Q`
-  - Cắt bỏ phần đuôi đoạn từ vị trí hiện tại: `W`
-  - Hoàn tác / Làm lại: `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`
-  - Timeline Filmstrip: Dải xem trước từng khung hình dạng cuộn mượt mà.
-  - Tua từng frame hình: Tiến/lùi từng khung hình (`←` / `→`), Phát/Tạm dừng (`Space`).
-- **Chèn Chú thích & Overlay trực tiếp lên Video:**
-  - Vẽ chú thích xuất hiện theo khoảng thời gian xác định trên video:
-    - **Hộp chữ nhật (Rectangle):** Khoanh vùng làm nổi bật đối tượng trên video.
-    - **Che mờ / Che đen (Blur & Blackout):** Che mờ hoặc che đen hoàn toàn thông tin nhạy cảm (mật khẩu, thẻ ngân hàng, token bí mật).
-    - **Chữ chú thích (Text Badge):** Nhãn văn bản bo góc với tùy chọn cỡ chữ, màu sắc và độ tương phản cao.
-    - **Mũi tên (Arrow):** Mũi tên chỉ hướng đến các chi tiết cần nhấn mạnh.
-  - **Dòng thời gian Overlay (`OverlayTimelineTrack`):** Kéo thả thanh timeline để chỉnh chính xác giây bắt đầu và kết thúc hiển thị của từng chú thích.
-- **Điều khiển âm thanh:** Nút bật/tắt (Mute / Remove Audio) để loại bỏ âm thanh khỏi video xuất xưởng.
-- **Tùy chọn Xuất & Lưu trữ:**
-  - **Lưu (Save):** Ghi đè vào tệp video gốc.
-  - **Lưu thành bản mới (Save As):** Xuất thành một tệp video mới độc lập.
-  - **Xuất khung hình (Export Frame):** Trích xuất khung hình đang dừng thành ảnh PNG chất lượng cao.
-  - **Xuất ảnh động GIF (`GifExportModal`):**
-    - Phạm vi xuất: Phân đoạn đang chọn, Toàn bộ video hoặc Khoảng thời gian tùy chỉnh.
-    - Tốc độ khung hình (FPS): `10`, `15`, `24`, hoặc `30` FPS.
-    - Độ phân giải: Kích thước gốc, 1080p, 720p, 480p hoặc kích thước tùy biến.
-    - Tốc độ phát lại: `0.5x`, `1.0x`, `1.5x`, `2.0x`.
-    - Tùy chọn lặp vô hạn (Loop forever).
-    - Trình phát xem trước lặp lại kèm thanh trượt scrubbing trực tiếp.
-    - Thanh tiến trình xuất file kèm nút hủy bỏ.
-
----
-
-### 🎨 5. Chú thích ảnh & Studio thiết kế (Konva Canvas)
-Studio chỉnh sửa ảnh chuyên nghiệp phục vụ viết tài liệu, báo cáo lỗi và hướng dẫn:
-
-#### 🛠️ Bộ 15 công cụ chú thích
-1. **Con trỏ chọn (`V`):** Di chuyển, kéo dãn kích thước, biến đổi và xóa các đối tượng vẽ.
-2. **Hình chữ nhật (`R`):** Vẽ khung viền tùy chọn màu sắc và độ dày nét.
-3. **Hình chữ nhật đánh số (Numbered Rect):** Khung chữ nhật có sẵn huy hiệu số thứ tự ở góc.
-4. **Hình Elip / Tròn (`O`):** Khoanh tròn đối tượng cần chú ý.
-5. **Mũi tên (`T`):** Mũi tên chỉ dẫn sắc nét.
-6. **Mũi tên đánh số (Numbered Arrow):** Mũi tên kèm vòng tròn số thứ tự tự tăng ở đuôi mũi tên.
-7. **Đường thẳng (Line):** Kẻ đường thẳng đánh dấu mốc.
-8. **Bước số thứ tự (`N`):** Huy hiệu tròn đánh số tự tăng (`1`, `2`, `3`...) cho các hướng dẫn từng bước.
-9. **Văn bản (`C`):** Hộp nhập ghi chú nhiều dòng với cỡ chữ tùy chỉnh (8–200px) và bảng màu phong phú.
-10. **Bút dạ quang (Highlighter):** Bút đánh dấu bán trong suốt (độ mờ 0.35) làm nổi bật chữ hoặc nút bấm.
-11. **Che mờ bảo mật (Blur / Pixelate / Redact):** 3 chế độ bảo mật:
-    - **Gaussian Blur:** Làm mờ quang học dịu mắt.
-    - **Pixelate / Mosaic:** Khối pixel điểm ảnh che trung bình.
-    - **Solid Redact:** Khối màu đặc che tuyệt đối, an toàn nhất.
-    - Thanh trượt chỉnh độ mờ / kích thước khối pixel.
-12. **Cắt ảnh (Crop):** Khung kéo xén ảnh trực quan.
-13. **Tạo khung nền Mockup / Beautifier:**
-    - Khung viền sang trọng, chuyên nghiệp phục vụ đăng mạng xã hội.
-    - Bộ preset phối màu gradient hiện đại hoặc màu đơn sắc (Solid).
-    - Chỉnh góc xoay gradient.
-    - Tùy chỉnh độ rộng viền đệm (padding), bo góc ảnh (border radius) và đổ bóng (`None`, `Subtle`, `Medium`, `Strong`).
-14. **Chèn thêm ảnh:** Dán trực tiếp từ clipboard (`Cmd/Ctrl+V`) hoặc kéo thả tệp ảnh từ máy tính vào canvas.
-15. **Ghép nhiều ảnh (`StitchDialog`):** Nối và ghép nhiều ảnh chụp màn hình theo chiều dọc hoặc chiều ngang thành một ảnh duy nhất.
-
-#### ⚙️ Khả năng Canvas & Lưu trữ
-- **Undo / Redo:** Ngăn xếp lịch sử thao tác đầy đủ (`Cmd/Ctrl+Z` / `Cmd/Ctrl+Shift+Z`).
-- **Zoom & Điều hướng:** Zoom thông minh (100% kích thước thật, vừa vặn màn hình, phóng to/thu nhỏ bằng con lăn chuột hoặc nút bấm).
-- **Đầu ra linh hoạt:**
-  - **Lưu:** Ghi đè vào ảnh gốc.
-  - **Lưu bản mới (Save As):** Xuất ra tệp mới.
-  - **Sao chép (Copy):** Copy ảnh hoàn thiện vào clipboard.
-  - **Lưu + Copy:** Vừa lưu vào đĩa vừa copy vào clipboard chỉ với một thao tác.
-  - **Flatten:** Hòa trộn vĩnh viễn toàn bộ lớp chú thích vào ảnh nền gốc.
-- **Định dạng tệp `.snapdoc` không phá hủy:**
-  - Định dạng container (ZIP) lưu trữ đồng thời ảnh nền gốc sạch (`base.png`), dữ liệu vector chú thích (`doc.json`), bản nháp tự động (`draft.json`) và ảnh xem trước (`preview.png`).
-  - Mở lại ảnh đã chụp bất kỳ lúc nào để di chuyển, đổi màu, sửa chữ hoặc xóa từng chú thích mà không làm mất ảnh gốc!
-  - Tự động lưu bản nháp và phục hồi sau sự cố với `ResumeBanner`.
-
----
-
-### ⚡ 6. Dải xem nhanh gần đây (Recent History Strip)
-- Nằm ngang ở đáy cửa sổ Editor.
-- Hiển thị thumbnail của các ảnh và video vừa chụp gần nhất kèm huy hiệu thời lượng/độ phân giải.
-- Nhấp chuột để chuyển đổi tức thì giữa các ảnh/video mà không cần mở cửa sổ Thư viện riêng.
-- Menu chuột phải: Sao chép nhanh, Mở, Xóa.
-
----
-
-### 📚 7. Thư viện lịch sử (Library Management)
-- **Tự động lưu trữ:** Cơ sở dữ liệu SQLite lưu toàn bộ ảnh chụp và video kèm metadata.
-- **Hai chế độ hiển thị:** Chuyển đổi linh hoạt giữa **Chế độ Lưới (Grid View)** và **Chế độ Danh sách (List View)**.
-- **Bộ lọc mạnh mẽ:**
-  - **Loại tệp:** Tất cả, Chỉ hình ảnh, Chỉ video.
-  - **Chế độ chụp:** Tất cả, Vùng chọn, Cửa sổ, Toàn màn hình, Toàn bộ màn hình, Chụp cuộn, Chụp nhanh.
-  - **Khoảng thời gian:** Chọn ngày bắt đầu và ngày kết thúc (`Từ ngày` — `Đến ngày`).
-- **Bảng xem trước & Thanh thông tin (Inspector Panel):**
-  - Trình xem ảnh sắc nét hoặc trình phát video HTML5 đầy đủ tính năng tua/phát.
-  - Thông tin chi tiết: Tên tệp, kích thước điểm ảnh, dung lượng, thời lượng, chế độ chụp, ngày giờ tạo, đường dẫn tệp.
-  - Phím chức năng: Đổi tên tệp trực tiếp, Sao chép vào clipboard, Mở thư mục chứa file, Mở lại trong Editor (giữ nguyên các layer chú thích), Cắt video.
-- **Thùng rác & Xóa mềm (Trash & Soft Delete):**
-  - Chuyển ảnh/video thừa vào Thùng rác.
-  - Khôi phục từng tệp hoặc Xóa vĩnh viễn.
-  - Nút **Dọn sạch thùng rác (Empty Trash)** một chạm.
-
----
-
-### ⚙️ 8. Cài đặt & Tùy biến (Settings)
-- **Thư mục lưu trữ:** Chọn thư mục lưu ảnh/video tùy thích bằng hộp thoại chọn thư mục của hệ thống.
-- **Hành vi đầu ra mặc định:** Đặt hành vi tự động sau khi chụp (Mở Editor, Sao chép clipboard, Lưu file, Lưu + Copy, hoặc Copy + Mở Editor).
-- **Cài đặt quay màn hình:** Nguồn âm thanh (Tắt / Mic / Hệ thống / Cả hai), tùy chọn ẩn cửa sổ SnapDoc, bật/tắt hiển thị phím bấm.
-- **Đa ngôn ngữ (i18n):** Chuyển đổi ngôn ngữ giao diện tức thì giữa **Tiếng Việt** và **English**.
-- **Khởi động cùng máy tính:** Tùy chọn tự động chạy SnapDoc khi đăng nhập hệ thống.
-- **Quản lý phím tắt toàn cục:** Đổi bất kỳ tổ hợp phím tắt nào, hỗ trợ trình thu phím trực quan và cảnh báo trùng phím.
-- **Chẩn đoán quyền hệ thống:** Kiểm tra trạng thái cấp quyền Ghi màn hình (Screen Recording) và Trợ năng (Accessibility) trên macOS.
-- **Tự động cập nhật (In-App Auto-Updater):**
-  - Tự động kiểm tra bản phát hành mới khi khởi động ứng dụng.
-  - Tự tải và cài đặt ngầm trong nền mà không làm gián đoạn công việc.
-  - Nút kiểm tra thủ công kèm thông báo Khởi động lại khi cài xong.
-
----
-
-### 🖥️ 9. Tích hợp hệ thống & Đa màn hình
-- **Tối ưu native cho macOS & Windows:** Tận dụng ScreenCaptureKit trên macOS và Windows Graphics Capture (WGC) cùng WASAPI trên Windows.
-- **Nhận diện đa màn hình thông minh:** Mọi cửa sổ (Capture Bar, Editor, Library, Settings, Overlays) luôn tự động mở trên màn hình đang chứa con trỏ chuột của người dùng.
-- **Menu khay hệ thống (System Tray):** Truy cập tức thì mọi chế độ chụp, quay video, thư viện, cài đặt và đồng hồ đếm giờ khi đang quay.
-
----
-
-## ⌨️ Bảng tra cứu phím tắt (Keyboard Shortcuts)
-
-*(Tất cả phím tắt toàn cục đều có thể đổi trong phần Cài đặt → Phím tắt)*
-
-### 🎯 Chụp & Quay toàn cục
-| Thao tác | macOS | Windows |
-|---|---|---|
-| **Mở thanh Capture Bar** | `Cmd+Shift+5` | `Ctrl+Shift+5` |
-| **Chụp vùng chọn** | `Cmd+Shift+2` | `Ctrl+Shift+2` |
-| **Chụp cửa sổ** | `Cmd+Shift+3` | `Ctrl+Shift+3` |
-| **Chụp toàn màn hình** | `Cmd+Shift+1` | `Ctrl+Shift+1` |
-| **Chụp tất cả màn hình** | `Cmd+Shift+4` | `Ctrl+Shift+4` |
-| **Chụp & Copy nhanh** | `Cmd+Shift+C` | `Ctrl+Shift+C` |
-| **Chụp cuộn trang** | `Cmd+Shift+6` | `Ctrl+Shift+6` |
-| **Chụp nhanh & Vẽ trực tiếp** | `Cmd+Shift+Q` | `Ctrl+Shift+Q` |
-| **Bắt đầu quay màn hình** | `Cmd+Shift+7` | `Ctrl+Shift+7` |
-
-### 🎨 Trong Trình biên tập ảnh (Editor)
-| Phím | Thao tác |
+| Bước | Làm gì |
 |---|---|
-| `V` | Công cụ Chọn / Di chuyển / Biến đổi |
-| `R` | Công cụ Hình chữ nhật |
-| `O` | Công cụ Hình Elip / Tròn |
-| `T` | Công cụ Mũi tên |
-| `N` | Công cụ Bước số thứ tự |
-| `C` | Công cụ Nhập văn bản |
-| `Cmd/Ctrl + Z` | Hoàn tác (Undo) |
-| `Cmd/Ctrl + Shift + Z` | Làm lại (Redo) |
-| `Delete` / `Backspace` | Xóa đối tượng đang chọn |
-| `Cmd/Ctrl + S` | Lưu (ghi đè vào file / định dạng `.snapdoc`) |
-| `Cmd/Ctrl + Shift + S` | Lưu + Sao chép vào clipboard |
-| `Cmd/Ctrl + C` | Sao chép ảnh vào clipboard |
-| `Cmd/Ctrl + V` | Dán ảnh từ clipboard vào canvas |
-| `Cmd/Ctrl + O` | Mở tệp ảnh từ ổ đĩa |
-| `Cmd/Ctrl + N` | Tạo canvas trống mới |
+| 1 | Bấm <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>5</kbd> để mở **thanh chụp** nổi. |
+| 2 | Bấm <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>2</kbd> rồi **kéo chuột** quanh vùng cần chụp. |
+| 3 | Ảnh mở trong **Editor**: <kbd>R</kbd> vẽ khung, <kbd>A</kbd> mũi tên, <kbd>T</kbd> chữ, <kbd>B</kbd> che mờ. |
+| 4 | <kbd>Ctrl</kbd>+<kbd>C</kbd> copy ảnh · <kbd>Ctrl</kbd>+<kbd>S</kbd> lưu vào Thư viện. |
+| 5 | <kbd>Ctrl</kbd>+<kbd>K</kbd> mở **bảng lệnh** — gõ “phụ đề”, “thư viện”, “hướng dẫn”… để làm nhanh mọi việc. |
 
-### ✂️ Trong Trình cắt & Xem lại video
-| Phím | Thao tác |
+<p align="center">
+  <img src="docs/screenshots/01-capture-bar.png" alt="Thanh chụp nổi" width="520">
+  <img src="docs/screenshots/02-options-menu.png" alt="Menu Tuỳ chọn" width="220">
+</p>
+
+Menu **Tuỳ chọn ▾** đặt nhanh: việc làm sau khi chụp (mở Editor / copy / lưu), nguồn âm thanh khi quay, hiển thị phím bấm & click chuột, **hẹn giờ chụp** 5–10 giây, và mục **📖 Hướng dẫn sử dụng** — mở trang hướng dẫn đầy đủ có màu sắc, sơ đồ, **sửa/thêm/xoá được** nội dung.
+
+---
+
+## ✨ Tính năng
+
+### 📸 Chụp ảnh
+Vùng chọn · Cửa sổ · Toàn màn hình · Tất cả màn hình · **Chụp cuộn dài** (trang web, tài liệu) · **Chụp nhanh** (chú thích ngay tại chỗ) · Chụp & copy. Có hẹn giờ, hình thu nhỏ sau khi chụp (Sửa / Copy / Lưu / **Ghim** nổi trên màn hình).
+
+### 🎬 Quay màn hình
+Quay vùng / cửa sổ / toàn màn hình, kèm **Micro**, **âm thanh hệ thống** hoặc cả hai (đồng bộ cả khi tạm dừng). Hiển thị **phím bấm** và **click chuột** trên video. **Webcam Bubble** — camera tròn nổi để quay hướng dẫn.
+
+### 🖍️ Chỉnh sửa ảnh
+15+ công cụ: khung (có số), mũi tên (có số, 2 chiều), tròn, đường, chữ (có nền & mũi tên chỉ đích), đánh số bước, tô sáng, **che mờ** (Blur / Pixel hoá / Che đặc), cắt, khung code có tô màu cú pháp, **khung nền & Làm đẹp 1 chạm**, nối ảnh dài, Flatten.
+
+<p align="center">
+  <img src="docs/screenshots/05-editor-annotate.png" alt="Chú thích ảnh" width="420">
+  <img src="docs/screenshots/06-editor-beautify.png" alt="Làm đẹp ảnh 1 chạm" width="420">
+</p>
+
+### 🔤 OCR & bảo vệ thông tin riêng tư
+- **OCR tức thì** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>): chọn vùng bất kỳ, chữ vào clipboard — nhận tiếng Việt có dấu, chạy offline.
+- **Live Text**: chữ trên ảnh bôi đen/copy được như văn bản.
+- **Che nhạy cảm tự động**: quét và che mờ **email, token/API key, số điện thoại (VN & Nhật), số thẻ (Luhn), địa chỉ IP, My Number, mã bưu điện 〒** và chuỗi bí mật dạng ngẫu nhiên.
+
+<p align="center">
+  <img src="docs/screenshots/04-editor-redact.png" alt="Tự động che thông tin nhạy cảm" width="640">
+</p>
+
+### ✂️ Chỉnh sửa video
+Cắt/chia đoạn, đổi **tốc độ** theo vùng, **Focus** (tự zoom theo chuột), con trỏ mượt, sóng nước khi click, chú thích theo thời gian (khung, che mờ, chữ, mũi tên), crop, tách âm thanh, **xuất GIF**, lưu thành video mới hoặc lưu đè.
+
+<p align="center">
+  <img src="docs/screenshots/13-video-editor.png" alt="Trình chỉnh sửa video" width="640">
+</p>
+
+### 🗂️ Thư viện
+Mọi ảnh/video đều được lưu, lọc theo loại/ngày, **Thùng rác** (khôi phục hoặc xoá vĩnh viễn), thao tác hàng loạt, ghim ảnh nổi, **chia sẻ qua Google Drive** của chính bạn.
+
+<p align="center">
+  <img src="docs/screenshots/08-library.png" alt="Thư viện" width="640">
+</p>
+
+### 🔍 Bảng lệnh <kbd>Ctrl</kbd>+<kbd>K</kbd>
+
+<p align="center">
+  <img src="docs/screenshots/07-command-palette.png" alt="Bảng lệnh" width="560">
+</p>
+
+---
+
+## 💬 Phụ đề tự động (AI)
+
+Nhận diện giọng nói thành phụ đề bằng **Whisper.cpp chạy offline** — video không rời khỏi máy. Mở bằng nút 💬 trên thanh công cụ của Editor video.
+
+<p align="center">
+  <img src="docs/screenshots/14-captions-dialog.png" alt="Hộp thoại phụ đề" width="640">
+</p>
+
+**Luồng làm việc:** cài model (1 lần) → **Tạo phụ đề** (chạy nền, popup tiến độ nhỏ ở góc) → soát & **sửa chữ từng dòng** → xuất `.srt` hoặc video.
+
+- **Cài model một lượt nhiều cái:** tick Nhanh (57 MB) / Cân bằng (181 MB, khuyên dùng) / Chính xác nhất (547 MB). Tải nền, đóng hộp thoại vẫn tiếp tục, đứt mạng sẽ **tải tiếp** (kiểm tra SHA-256).
+- **Chạy nền, không mất việc:** đóng hộp thoại, đổi video, thậm chí đóng cả Editor — kết quả vẫn được giữ; mở lại đúng video là phụ đề đã có.
+- **Xuất riêng:** `Lưu .srt` · `Xuất video (phụ đề bật/tắt được)` — rất nhanh, không mã hoá lại hình · `Xuất video (ghi cứng vào hình)`. Video đã cắt/đổi tốc độ thì mốc phụ đề **tự khớp**.
+- **Chính xác hơn, ít lỗi hơn:** tự **bỏ đoạn im lặng (VAD)**, chống vòng lặp lặp câu, trộn **mọi luồng âm thanh** của video, ưu tiên GPU (CUDA) nếu engine hỗ trợ và **tự chạy lại bằng CPU** nếu GPU lỗi.
+- Nên **chọn đúng ngôn ngữ trong video** thay vì “Tự nhận diện” khi video ngắn hoặc nhiều tiếng ồn.
+
+> Tính năng **dịch** phụ đề sang ngôn ngữ khác **không** có trong bản này (cần dịch vụ bên ngoài, trái tiêu chí chạy hoàn toàn offline).
+
+---
+
+## 🤖 Kết nối AI Agent (MCP)
+
+SnapDoc có **MCP server** nội bộ để Claude Code / Claude Desktop / Antigravity đọc Thư viện và — khi bạn cho phép — nhập, cắt, crop, đổi tốc độ video, tạo phụ đề.
+
+<p align="center">
+  <img src="docs/screenshots/12-settings-ai-agent.png" alt="Cài đặt AI Agent" width="640">
+</p>
+
+Ba lớp an toàn: **(1)** server tắt mặc định, chỉ nghe `127.0.0.1`, cần token, từ chối mọi request có `Origin` / `Host` lạ; **(2)** công tắc **“Cho phép agent ghi/sửa/xoá”** riêng (mặc định tắt = chỉ đọc); **(3)** thao tác phá huỷ (đưa vào Thùng rác…) luôn hiện **hộp thoại xác nhận** của Windows, và **nhật ký** mọi thao tác agent xem được trong app. Hướng dẫn kết nối: [docs/MCP_AGENT.md](docs/MCP_AGENT.md).
+
+---
+
+## ⌨️ Bảng phím tắt
+
+Phím tắt **toàn cục** (đổi được ở *Cài đặt › Phím tắt*):
+
+| Việc | Phím |
 |---|---|
-| `Space` | Phát / Tạm dừng video |
-| `←` / `→` | Tua lùi / Tua tiến từng khung hình |
-| `Ctrl/Cmd + B` | Chia tách đoạn tại vị trí phát |
-| `Q` | Cắt bỏ phần đầu đoạn đến vị trí hiện tại |
-| `W` | Cắt bỏ phần đuôi đoạn từ vị trí hiện tại |
-| `Delete` / `Backspace` | Xóa phân đoạn đang chọn |
-| `Ctrl/Cmd + Z` | Hoàn tác thao tác cắt |
-| `Ctrl/Cmd + Shift + Z` | Làm lại thao tác cắt |
+| Chụp toàn màn hình / vùng / cửa sổ / tất cả màn hình | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> / <kbd>4</kbd> |
+| Mở thanh chụp | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>5</kbd> |
+| Chụp cuộn dài | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>6</kbd> |
+| Quay màn hình (bắt đầu/dừng) | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd> |
+| Chụp nhanh (chú thích tại chỗ) | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> |
+| Chụp & copy nhanh | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> |
+| Trích chữ (OCR) vào clipboard | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> |
+| Bảng lệnh | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
+
+**Trong Editor ảnh:** <kbd>V</kbd> chọn · <kbd>R</kbd> khung · <kbd>E</kbd> khung số · <kbd>O</kbd> tròn · <kbd>A</kbd> mũi tên · <kbd>W</kbd> mũi tên số · <kbd>D</kbd> mũi tên 2 chiều · <kbd>L</kbd> đường · <kbd>T</kbd> chữ · <kbd>N</kbd> đánh số · <kbd>H</kbd> tô sáng · <kbd>B</kbd> che mờ · <kbd>C</kbd> cắt · <kbd>G</kbd> khung nền · <kbd>K</kbd> khung code · <kbd>Esc</kbd> thoát.
+**Trong Editor video:** <kbd>Q</kbd> cắt đầu · <kbd>W</kbd> cắt đuôi · <kbd>Ctrl</kbd>+<kbd>B</kbd> chia đoạn · <kbd>Delete</kbd> xoá đoạn · <kbd>Ctrl</kbd>+<kbd>S</kbd> lưu đè · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> lưu thành video mới.
+
+<p align="center">
+  <img src="docs/screenshots/10-settings-shortcuts.png" alt="Cài đặt phím tắt" width="560">
+</p>
 
 ---
 
-## 🏗️ Cấu trúc dự án
+## 🔒 Quyền riêng tư & bảo mật
 
-```text
-snapdoc/
-├── src-tauri/                 # Backend (Rust + Tauri 2)
-│   └── src/
-│       ├── capture/           # Bộ máy chụp ảnh (ScreenCaptureKit, WGC, xcap, freeze)
-│       ├── record/            # Bộ máy quay video, WASAPI/SCK audio, FFmpeg encoder, keystrokes
-│       ├── history/           # Cơ sở dữ liệu SQLite, lưu trữ asset, tạo thumbnail
-│       ├── hotkey/            # Đăng ký phím tắt toàn cục & lắng nghe sự kiện
-│       ├── windows/           # Quản lý vòng đời cửa sổ trên hệ thống đa màn hình
-│       ├── storage/           # Đọc ghi cấu hình và cài đặt
-│       ├── snapdoc_file.rs    # Xử lý tệp container .snapdoc (ZIP, base, annotations, draft)
-│       ├── tray.rs            # Menu khay hệ thống native & chỉ báo timer
-│       └── update.rs          # Kiểm tra và cài đặt cập nhật tự động ngầm
-├── src/                       # Frontend (React 19 + TypeScript + Vite)
-│   ├── features/
-│   │   ├── annotation/        # Canvas Konva, công cụ vẽ, quản lý phiên .snapdoc, undo/redo
-│   │   ├── video-trim/        # VideoTrimmer, overlay video, timeline tracks, modal xuất GIF
-│   │   └── output/            # Xử lý xuất file (clipboard, hệ thống tệp, hộp thoại lưu)
-│   ├── routes/                # Các route webview đa cửa sổ
-│   │   ├── capture-bar/       # Thanh điều khiển nổi & popover tùy chọn
-│   │   ├── editor/            # Studio biên tập ảnh & video hợp nhất + dải xem nhanh gần đây
-│   │   ├── history/           # Cửa sổ Thư viện SQLite (Lưới/Danh sách, bộ lọc, xem trước, thùng rác)
-│   │   ├── overlay/           # Kính ngắm kéo chọn vùng & chọn cửa sổ
-│   │   ├── quick-capture/     # Lớp phủ vẽ trực tiếp tức thì
-│   │   ├── record-border/     # Viền ranh giới khu vực đang quay
-│   │   ├── record-keystroke/  # Bàn phím ảo HUD hiển thị phím bấm trực tiếp
-│   │   ├── record-stop-control/# Widget nổi dừng và tạm dừng quay
-│   │   ├── recording-indicator/# Cửa sổ thông báo đang ghi hình trên khay
-│   │   ├── scroll-control/    # Giao diện điều khiển khi chụp cuộn
-│   │   ├── thumbnail/         # Popup xem nhanh ảnh chụp ở góc màn hình
-│   │   └── settings/          # Cửa sổ Cài đặt (phím tắt, âm thanh, đa ngôn ngữ, updater)
-│   ├── locales/               # Bản dịch Tiếng Anh & Tiếng Việt (i18next)
-│   └── lib/                   # Tauri IPC & cầu nối sự kiện
-```
+- **Mặc định offline:** chụp, quay, OCR, phụ đề đều chạy trên máy. Chỉ khi bạn bấm **Chia sẻ qua Drive** thì tệp đó mới được tải lên **Google Drive của bạn**.
+- **Mã hoá token Drive** bằng Windows DPAPI; đăng nhập Google dùng PKCE `S256` + `state` ngẫu nhiên và chỉ chấp nhận đúng callback của lần đăng nhập đó.
+- **Tải về có kiểm tra:** engine Whisper & model được **ghim SHA-256**, tải tiếp được, không chạy gì chưa qua kiểm tra.
+- **Quyền Tauri tối thiểu theo cửa sổ:** cửa sổ làm việc (Editor, Thư viện, Cài đặt) có quyền đầy đủ; cửa sổ tạm (thanh chụp, overlay, thumbnail…) dùng bộ quyền hẹp — không tạo được cửa sổ mới hay mở URL.
+- **Mở file `.snapdoc` lạ an toàn:** giới hạn kích thước giải nén (chống “zip bomb”).
+- **Thống kê ẩn danh (Aptabase)** chỉ hoạt động nếu bản build có `APTABASE_KEY`; bản tự build mặc định **không có** → không gửi gì. Nếu bật, chỉ có 2 sự kiện `app_started` / `capture_done`, không kèm nội dung hay đường dẫn.
+- **Tự cập nhật đã tắt** trong bản này; nâng cấp bằng cách chạy bộ cài mới.
+
+Báo lỗ hổng bảo mật: xem [SECURITY.md](SECURITY.md).
 
 ---
 
-## 💻 Yêu cầu hệ thống & Hướng dẫn phát triển
+## 🛟 Xử lý sự cố
 
-- **Node.js** ≥ 20 (khuyên dùng Node 22)
-- **Rust** ≥ 1.80 (khuyên dùng Rust 1.96+)
-- **macOS:** Cần cấp quyền **Screen Recording** (Ghi màn hình) và **Accessibility** (Trợ năng) trong Cài đặt hệ thống → Quyền riêng tư & Bảo mật cho ứng dụng / terminal.
+| Triệu chứng | Cách xử lý |
+|---|---|
+| Phím tắt không chạy | Phần mềm khác đang chiếm tổ hợp đó → đổi ở *Cài đặt › Phím tắt*. |
+| Chụp ra ảnh đen | Kiểm tra *Cài đặt › Quyền hạn*; một số cửa sổ có bảo vệ nội dung (phát phim bản quyền) bị Windows chặn chụp. |
+| Phụ đề đứng ở một % rất lâu | Model “Chính xác nhất” chạy CPU khá chậm với video dài — thử “Cân bằng”, chọn đúng ngôn ngữ; popup có đồng hồ để biết vẫn đang chạy. Bấm ✕ để huỷ. |
+| Phụ đề sai ngôn ngữ / chữ lạ | Chọn đúng *Ngôn ngữ trong video* thay vì “Tự nhận diện”; thử model lớn hơn. |
+| Tải model bị đứt | Bấm “Tải về & cài đặt” lần nữa — tải tiếp từ phần đã có. |
+| Cần chạy lại sau khi đóng Editor | Không cần: kết quả phụ đề được giữ, mở lại video là có. (Chỉ **thoát hẳn SnapDoc** mới dừng tác vụ đang chạy.) |
 
-### Chạy chế độ phát triển (Development)
-```bash
+---
+
+## 🛠️ Dành cho nhà phát triển
+
+```powershell
+# Yêu cầu: Node 20+, Rust stable (MSVC), Visual Studio Build Tools (C++), FFmpeg sidecar trong src-tauri/binaries/
 npm install
-npm run app:dev      # Khởi động dev server Vite + biên dịch backend Rust
+npm run tauri dev                    # chạy chế độ phát triển
+npx tauri build --bundles nsis       # đóng gói bộ cài Windows (NSIS)
 ```
 
-> **macOS Code Signing:** Để giữ quyền Ghi màn hình không bị reset sau mỗi lần rebuild:
-> ```bash
-> npm run dev:mac      # Tạo bản debug .app, tự ký bằng self-signed identity ổn định và chạy
-> ```
+- Kiểm tra: `npx tsc --noEmit` · `npx vitest run` · `cd src-tauri; cargo test`.
+- **E2E thật** (điều khiển app bằng DevTools Protocol, dùng bản build **cô lập** để không đụng bản đang cài): xem [scripts/e2e/README.md](scripts/e2e/README.md). Ảnh minh hoạ trong README này được chụp tự động bằng `node scripts/e2e/s14_readme_shots.mjs`.
+- Trang hướng dẫn trong app: sửa `docs/guide/guide.template.html` rồi chạy `node scripts/build-guide.mjs`.
+- Mẹo build trên Windows: đặt `CARGO_TARGET_DIR` về một đường dẫn **ngắn, thuần ASCII** (vd `C:\sdt`) nếu đường dẫn dự án có dấu — tránh lỗi `lib.exe`/`autocfg`; giảm `-j 2` khi RAM thấp.
 
-### Đóng gói bản phát hành (Production)
-```bash
-npm run build        # Kiểm tra kiểu TypeScript + build Vite production
-npm run app:build    # Đóng gói cài đặt hoàn chỉnh (.dmg cho macOS, .msi/.exe cho Windows)
-```
-
-Xem thêm [BUILD.md](BUILD.md) để biết chi tiết về cross-compile Windows qua Docker, chữ ký số và quy trình phát hành phiên bản.
+Cấu trúc chính: `src/` (React UI) · `src-tauri/src/` (Rust: `captions.rs` phụ đề, `mcp/` AI Agent, `history/` Thư viện, `record/` quay, `windows/` cửa sổ) · `scripts/e2e/` (E2E) · `docs/` (tài liệu).
 
 ---
 
-## 📄 Bản quyền (License)
+## 📄 Bản quyền
 
-[MIT](LICENSE)
+Xem tệp `LICENSE` (nếu có) và các giấy phép của thư viện bên thứ ba (Whisper.cpp — MIT, FFmpeg — LGPL/GPL tuỳ bản dựng, Tesseract/PaddleOCR/ONNX Runtime…). Dự án gốc của tác giả upstream; bản này là nhánh cá nhân với các cải tiến về phụ đề, AI Agent, bảo mật và tài liệu.

@@ -292,17 +292,18 @@ fn save_last_region(
     h: f64,
 ) {
     let Ok(config_dir) = app.path().app_config_dir() else { return };
-    let mut settings = storage::settings::load(&config_dir);
-    settings["lastRecordRegion"] = serde_json::json!({
-        "displayId": display_id,
-        "displayName": display_name,
-        "isPrimary": is_primary,
-        "x": x,
-        "y": y,
-        "w": w,
-        "h": h,
-    });
-    let _ = storage::settings::save(&config_dir, &settings);
+    let _ = storage::settings::patch(
+        &config_dir,
+        &serde_json::json!({ "lastRecordRegion": {
+            "displayId": display_id,
+            "displayName": display_name,
+            "isPrimary": is_primary,
+            "x": x,
+            "y": y,
+            "w": w,
+            "h": h,
+        }}),
+    );
 }
 
 /// Chụp "đóng băng" tất cả màn hình (JPEG) và lưu vào AppState — gọi TRƯỚC

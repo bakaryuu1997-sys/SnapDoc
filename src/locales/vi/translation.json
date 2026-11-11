@@ -229,7 +229,9 @@
     "quick": "Chụp nhanh",
     "recordFull": "Quay toàn màn",
     "recordWindow": "Quay cửa sổ",
-    "recordRegion": "Quay vùng"
+    "recordRegion": "Quay vùng",
+    "guide": "Hướng dẫn sử dụng",
+    "guideTooltip": "Mở hướng dẫn sử dụng đầy đủ (có thể tự sửa/thêm/xoá nội dung)"
   },
   "overlay": {
     "dragToSelect": "Kéo để chọn vùng • Di chuột qua cửa sổ rồi click để chụp cả cửa sổ • Esc / chuột phải để huỷ",
@@ -783,5 +785,9 @@
     "modelBaseShort": "Nhanh",
     "modelSmallShort": "Cân bằng",
     "modelTurboShort": "Chính xác nhất"
+  },
+  "commandPalette": {
+    "openGuide": "Hướng dẫn sử dụng",
+    "openGuideDesc": "Mở trang hướng dẫn đầy đủ (sửa/thêm/xoá được)"
   }
 }

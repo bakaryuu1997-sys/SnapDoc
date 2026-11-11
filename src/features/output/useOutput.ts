@@ -108,8 +108,7 @@ export async function saveAsToFile(dataUrl: string): Promise<string | null> {
   const dir = settings?.lastImageSaveAsDir || settings?.saveDir || (await ipc.defaultSaveDir());
   const path = await promptSavePath(dir ? `${dir}/${stampName()}.png` : `${stampName()}.png`);
   if (!path) return null;
-  if (settings) {
-    ipc.setSettings({ ...settings, lastImageSaveAsDir: dirnameOf(path) }).catch(() => {});
-  }
+  // Ghi MỘT key (backend gộp vào bản mới nhất) — không ghi đè cả object bằng bản chụp cũ.
+  ipc.patchSettings({ lastImageSaveAsDir: dirnameOf(path) }).catch(() => {});
   return await ipc.saveImage(path, await ensureDataUrl(dataUrl));
 }
