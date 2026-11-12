@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { ipc, type CaptureMode, type OutputMode } from "../../lib/ipc";
 import { showError } from "../../lib/notify";
+import { recognizeImage } from "../../lib/ocrService";
 import { useFileDrop } from "../../lib/useFileDrop";
 
 type RecordMode = "full" | "window" | "region";
@@ -159,6 +160,44 @@ export default function CaptureBar() {
       selectVideoMode(e.payload.mode as RecordMode);
     });
 
+    // Text Grab (Ctrl+Shift+T): overlay gửi ảnh vùng chọn sang đây để OCR ngầm
+    // rồi chép chữ vào clipboard (overlay đã đóng hết trên mọi màn hình).
+    const unlistenTextGrab = listen<{ dataUrl: string }>("snapdoc-process-text-grab", async (event) => {
+      const { dataUrl } = event.payload || {};
+      if (!dataUrl) return;
+      const preview = (text: string) =>
+        text.length > 55 ? text.slice(0, 55).replace(/\s+/g, " ") + "..." : text.replace(/\s+/g, " ");
+      const done = async (text: string) => {
+        await ipc.copyText(text);
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text).catch(() => {});
+        }
+        await ipc.showToast(`📋 Đã sao chép văn bản vào Clipboard: "${preview(text)}"`);
+      };
+      try {
+        const res = await recognizeImage(dataUrl);
+        const text = (res?.text || "").trim();
+        if (text) {
+          await done(text);
+        } else {
+          await ipc.showToast("⚠️ Không tìm thấy văn bản trong vùng vừa chọn");
+        }
+      } catch (err) {
+        console.error("[SnapDoc] OCR text-grab failed, fallback to native OCR:", err);
+        try {
+          const nativeRes = await ipc.runOcr(dataUrl);
+          const text = (nativeRes?.text || "").trim();
+          if (text) {
+            await done(text);
+            return;
+          }
+        } catch (e) {
+          console.error("[SnapDoc] Native OCR text-grab fallback failed:", e);
+        }
+        await ipc.showToast("⚠️ Không tìm thấy văn bản trong vùng vừa chọn").catch(() => {});
+      }
+    });
+
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
@@ -189,6 +228,7 @@ export default function CaptureBar() {
 
     return () => {
       window.removeEventListener("keydown", onKey);
+      unlistenTextGrab.then((fn) => fn());
       unlistenRecordMode.then((fn) => fn());
       unlistenSettings.then((fn) => fn());
     };

@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { ipc, type WindowInfo } from "../../lib/ipc";
 import { type StageHandle } from "../../features/annotation/canvas/AnnotationStage";
@@ -10,7 +10,6 @@ import { PRESET_COLORS, type Tool } from "../../features/annotation/model";
 import { quickToolFromKey } from "../../lib/toolShortcuts";
 import QuickToolbar, { quickToolbarLayout } from "../quick-capture/QuickToolbar";
 import { serializeDoc } from "../../features/annotation/sessions";
-import { recognizeImage } from "../../lib/ocrService";
 
 /**
  * Lấy ảnh "đóng băng màn hình" từ Rust (JPEG base64) khi mount overlay.
@@ -539,9 +538,13 @@ function RegionSelect() {
       const r = rectFrom(s[0], s[1], x, y);
       if (r.w >= 3 && r.h >= 3) {
         if (session.mode === "text-grab") {
+          // Text Grab: cắt vùng chọn từ ảnh đóng băng, giao cho CaptureBar (cửa sổ
+          // nền luôn sống) làm OCR + chép clipboard, rồi đóng TẤT CẢ overlay
+          // (overlay-0, overlay-1…) ngay — `closeSelf` chỉ đóng overlay hiện tại
+          // nên màn hình còn lại bị kẹt.
           const img = frozenImgRef.current;
           if (!img) {
-            ipc.closeSelf();
+            ipc.cancelOverlay().catch(() => {});
             return;
           }
           const scaleX = img.naturalWidth / window.innerWidth;
@@ -552,7 +555,7 @@ function RegionSelect() {
           const sh = Math.round(r.h * scaleY);
 
           if (sw < 6 || sh < 6) {
-            ipc.closeSelf();
+            ipc.cancelOverlay().catch(() => {});
             return;
           }
 
@@ -563,23 +566,11 @@ function RegionSelect() {
           if (offCtx) {
             offCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
             const dataUrl = offCanvas.toDataURL("image/png");
-            recognizeImage(dataUrl)
-              .then(async (res) => {
-                const text = (res.text || "").trim();
-                if (text) {
-                  await ipc.copyText(text);
-                  if (navigator.clipboard?.writeText) {
-                    await navigator.clipboard.writeText(text);
-                  }
-                }
-                ipc.closeSelf();
-              })
-              .catch(() => {
-                ipc.closeSelf();
-              });
-          } else {
-            ipc.closeSelf();
+            emit("snapdoc-process-text-grab", { dataUrl }).catch((err) => {
+              console.error("[SnapDoc] Emit text-grab failed:", err);
+            });
           }
+          ipc.cancelOverlay().catch(() => {});
           return;
         }
 

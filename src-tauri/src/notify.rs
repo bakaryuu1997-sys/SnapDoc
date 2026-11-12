@@ -105,3 +105,87 @@ pub fn install_error_bridge(app: &AppHandle) {
         error(&handle, &msg);
     });
 }
+
+/// Script PowerShell hiện balloon tip. Nội dung toast KHÔNG ghép vào dòng lệnh:
+/// đi qua stdin. Dòng `InputEncoding = UTF8` là BẮT BUỘC — thiếu nó PowerShell
+/// đọc stdin bằng codepage ANSI và tiếng Việt bị vỡ chữ.
+#[cfg(target_os = "windows")]
+const TOAST_SCRIPT: &str = r#"[Console]::InputEncoding = [System.Text.Encoding]::UTF8;
+Add-Type -AssemblyName System.Windows.Forms
+$msg = [Console]::In.ReadToEnd()
+$n = New-Object System.Windows.Forms.NotifyIcon
+$n.Icon = [System.Drawing.SystemIcons]::Information
+$n.BalloonTipTitle = "SnapDoc"
+$n.BalloonTipText = $msg
+$n.Visible = $True
+$n.ShowBalloonTip(4000)
+Start-Sleep -Milliseconds 2500
+$n.Dispose()
+"#;
+
+/// Phát thông báo desktop dạng toast/balloon không chặn luồng (non-blocking).
+/// Dùng cho Text Grab (Ctrl+Shift+T): overlay đã đóng, CaptureBar báo kết quả.
+pub fn show_toast(_app: &AppHandle, msg: &str) {
+    let msg_owned = msg.to_string();
+    std::thread::spawn(move || {
+        #[cfg(target_os = "windows")]
+        {
+            use std::io::Write;
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            if let Ok(mut child) = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    TOAST_SCRIPT,
+                ])
+                .stdin(std::process::Stdio::piped())
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+            {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(msg_owned.as_bytes());
+                }
+                let _ = child.wait();
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let script = format!(
+                "display notification \"{}\" with title \"SnapDoc\"",
+                msg_owned
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\n', " ")
+            );
+            let _ = std::process::Command::new("osascript")
+                .args(["-e", &script])
+                .spawn();
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            let _ = msg_owned;
+        }
+    });
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod toast_tests {
+    use super::TOAST_SCRIPT;
+
+    #[test]
+    fn toast_script_reads_stdin_as_utf8() {
+        // Dòng đầu tiên phải đặt InputEncoding = UTF8 (lỗi vỡ chữ tiếng Việt).
+        assert!(TOAST_SCRIPT.starts_with("[Console]::InputEncoding = [System.Text.Encoding]::UTF8;"));
+        assert!(TOAST_SCRIPT.contains("[Console]::In.ReadToEnd()"));
+    }
+
+    #[test]
+    fn toast_script_never_embeds_user_text() {
+        // Nội dung toast chỉ đến từ stdin, không có chỗ ghép chuỗi (format!/{}).
+        assert!(!TOAST_SCRIPT.contains("{}"));
+    }
+}

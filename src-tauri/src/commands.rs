@@ -1633,3 +1633,10 @@ pub fn copy_text(app: tauri::AppHandle, text: String) -> Result<(), String> {
     }
     clipboard::copy_text(&text)
 }
+
+/// Toast desktop (balloon) không chặn — Text Grab báo kết quả sau khi overlay đã đóng.
+#[tauri::command]
+pub fn show_toast(app: tauri::AppHandle, message: String) -> Result<(), String> {
+    crate::notify::show_toast(&app, &message);
+    Ok(())
+}

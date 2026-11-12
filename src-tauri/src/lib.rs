@@ -203,6 +203,7 @@ pub fn run() {
             captions::captions_export_video,
             commands::run_ocr,
             commands::copy_text,
+            commands::show_toast,
             commands::get_pinned_image,
             commands::close_self,
             commands::set_always_on_top,

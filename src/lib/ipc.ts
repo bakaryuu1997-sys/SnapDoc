@@ -541,6 +541,8 @@ export const ipc = {
       }
     } catch {}
   },
+  /** Toast desktop (balloon) — Text Grab báo kết quả sau khi overlay đã đóng. */
+  showToast: (message: string) => invoke<void>("show_toast", { message }),
   pinImage: (src: string, width?: number, height?: number) =>
     invoke<void>("pin_image", { src, width, height }),
   /** Webcam Bubble: cửa sổ camera tròn nổi, dùng khi quay màn hình. KHÔNG
