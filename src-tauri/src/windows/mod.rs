@@ -825,7 +825,7 @@ pub fn prewarm_capture_bar_popover(app: &AppHandle) -> Result<(), String> {
     }
     let _win = WebviewWindowBuilder::new(app, "capture-bar-popover", url("capture-bar-popover"))
         .title("SnapDoc Options")
-        .inner_size(220.0, 536.0)
+        .inner_size(220.0, 600.0)
         .resizable(false)
         .decorations(false)
         .transparent(true)
@@ -892,7 +892,7 @@ pub fn open_capture_bar_popover(
         .ok_or("capture-bar không tồn tại")?;
 
     let popover_w = 220.0;
-    let popover_h = 536.0;
+    let popover_h = 600.0;
 
     #[cfg(target_os = "macos")]
     {

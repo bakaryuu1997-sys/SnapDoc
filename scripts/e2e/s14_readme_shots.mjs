@@ -16,7 +16,27 @@ fs.mkdirSync(OUT, { recursive: true });
 const VIDEO = process.env.E2E_VIDEO || "";
 const log = (...a) => console.log(...a);
 
+/** Che dữ liệu riêng/đường dẫn máy này trên trang TRƯỚC khi chụp: token Bearer của MCP và đường dẫn exe. */
+async function sanitize(win) {
+  const fn = () => {
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (w.nextNode()) nodes.push(w.currentNode);
+    const BS = String.fromCharCode(92); // dấu \ (tránh nhầm lẫn escape khi chuỗi hàm được gửi vào trang)
+    const exe = ["C:", "Program Files", "SnapDoc", "snapdoc.exe"].join(BS + BS);
+    const anyPath = /[A-Za-z]:[^"'\s]*?snapdoc\.exe/g;
+    for (const n of nodes) {
+      let t = n.nodeValue;
+      t = t.replace(/Bearer [0-9A-Za-z._-]{16,}/g, "Bearer <TOKEN>");
+      t = t.replace(anyPath, exe);
+      if (t !== n.nodeValue) n.nodeValue = t;
+    }
+  };
+  await win.eval(`(${fn.toString()})()`);
+}
+
 async function snap(win, name) {
+  await sanitize(win);
   const r = await win.send("Page.captureScreenshot", { format: "png" });
   const f = path.join(OUT, `${name}.png`);
   fs.writeFileSync(f, Buffer.from(r.data, "base64"));
@@ -162,3 +182,5 @@ if (VIDEO && fs.existsSync(VIDEO)) {
 
 bar.close();
 log("Xong. Ảnh nằm trong", OUT);
+
+process.exit(0); // đóng hết kết nối CDP còn mở, tránh treo khi thoát
