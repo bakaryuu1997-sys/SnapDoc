@@ -54,8 +54,7 @@ Gỡ cài đặt: *Settings → Apps → SnapDoc → Uninstall*. Dữ liệu (Th
 | 5 | <kbd>Ctrl</kbd>+<kbd>K</kbd> mở **bảng lệnh** — gõ “phụ đề”, “thư viện”, “hướng dẫn”… để làm nhanh mọi việc. |
 
 <p align="center">
-  <img src="docs/screenshots/01-capture-bar.png" alt="Thanh chụp nổi" width="520">
-  <img src="docs/screenshots/02-options-menu.png" alt="Menu Tuỳ chọn" width="220">
+  <img src="docs/screenshots/01-capture-bar.png" alt="Thanh chụp nổi" width="640">
 </p>
 
 Menu **Tuỳ chọn ▾** đặt nhanh: việc làm sau khi chụp (mở Editor / copy / lưu), nguồn âm thanh khi quay, hiển thị phím bấm & click chuột, **hẹn giờ chụp** 5–10 giây, và mục **📖 Hướng dẫn sử dụng** — mở trang hướng dẫn đầy đủ có màu sắc, sơ đồ, **sửa/thêm/xoá được** nội dung.

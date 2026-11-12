@@ -36,8 +36,7 @@ Uninstall via *Settings → Apps*. Your data (Library, subtitle models) lives in
 | 5 | <kbd>Ctrl</kbd>+<kbd>K</kbd> opens the **command palette** — type “captions”, “library”, “guide”… |
 
 <p align="center">
-  <img src="docs/screenshots/01-capture-bar.png" alt="Capture bar" width="520">
-  <img src="docs/screenshots/02-options-menu.png" alt="Options menu" width="220">
+  <img src="docs/screenshots/01-capture-bar.png" alt="Capture bar" width="640">
 </p>
 
 The **Options ▾** menu sets what happens after a capture, the audio source for recordings, keystroke/click overlays, a **capture timer**, and opens **📖 User guide** — a colourful, editable in-app guide (add / edit / delete sections).
