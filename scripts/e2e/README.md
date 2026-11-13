@@ -28,6 +28,12 @@ Một số kịch bản (`s09`, `s10`) có đường dẫn tuyệt đối tới 
 
 `s13_mcp.mjs` kiểm tra MCP server cho AI agent (HTTP + cầu stdio), công tắc quyền ghi, nhật ký, xác nhận thao tác phá huỷ và các đường đưa video vào app. Đặt `E2E_EXE` = đường dẫn `snapdoc.exe` của bản e2e để test cầu stdio. Hộp thoại xác nhận (Yes/No gốc của Windows) được bấm bằng `click_dialog.ps1` (UI Automation, không chụp màn hình). Các thao tác "ghi đè bản gốc" chỉ chạy trên BẢN SAO video trong thư mục tạm. Kéo-thả được mô phỏng bằng cách phát sự kiện `tauri://drag-drop` (không thể kéo file thật qua CDP).
 
+`s15_textgrab_2monitors.mjs` kiểm tra tính năng Text Grab (`Ctrl+Shift+T` / phím tắt cấu hình) trên thiết lập đa màn hình (2 màn hình trở lên):
+- Yêu cầu đặt biến môi trường `$env:E2E_EXE = '<đường_dẫn_tới_snapdoc_e2e.exe>'`.
+- Cấu hình phím tắt kiểm thử (mặc định e2e dùng `CmdOrCtrl+Alt+Shift+F10` cho `textGrab` trong `%APPDATA%\com.snapdoc.e2etest\settings.json`).
+- Sử dụng các PowerShell helper trong `scripts/e2e/helpers/`: `textwin.ps1` (hiển thị text giả lập trên từng màn hình), `send_hotkey.ps1` (gửi phím tắt OS), `input.ps1` (mô phỏng thao tác kéo chuột OS thật vì overlay bắt sự kiện từ Win32 `GetAsyncKeyState`), `win_probe.ps1` (đếm và kiểm tra trạng thái cửa sổ overlay) và `restart_e2e.ps1` (khởi động app với cờ debug CDP :9333).
+- Kiểm tra toàn diện: mở overlay trên mọi màn hình, kéo chọn và thả chuột đóng toàn bộ overlay trên tất cả các màn hình, sao chép kết quả OCR vào Clipboard, hiển thị toast tiếng Việt chuẩn UTF-8, đóng overlay bằng phím Esc và chuột phải.
+
 ## Không tự động hoá (cần test tay)
 
 Chọn vùng/cuộn/quay màn hình, thumbnail sau chụp, tray, phím tắt toàn cục, OAuth Google thật, camera thật — vì chạm vào màn hình/camera/tài khoản của bạn.
