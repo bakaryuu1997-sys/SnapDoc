@@ -31,9 +31,11 @@
 
 ## 📦 Cài đặt nhanh
 
+[![Tải về bản mới nhất](https://img.shields.io/github/v/release/bakaryuu1997-sys/SnapDoc?color=blue&label=T%E1%BA%A3i%20v%E1%BB%81%20SnapDoc%20v3.9.5)](https://github.com/bakaryuu1997-sys/SnapDoc/releases/latest)
+
 **Yêu cầu:** Windows 10/11 64-bit, [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (Windows 11 đã có sẵn). Nên có ≥ 8 GB RAM nếu dùng phụ đề AI với model lớn.
 
-1. Tải bộ cài `SnapDoc_<phiên bản>_x64-setup.exe` (thư mục `release/` của dự án).
+1. Tải bộ cài mới nhất [SnapDoc_3.9.5_x64-setup.exe](https://github.com/bakaryuu1997-sys/SnapDoc/releases/latest) (hoặc trong thư mục `release/` của dự án).
 2. Chạy file, làm theo trình cài đặt. SnapDoc tự chạy nền và hiện biểu tượng ở khay hệ thống (cạnh đồng hồ).
 3. Lần đầu mở, Windows có thể hỏi quyền (ghi màn hình, camera/micro nếu bạn dùng) — hãy cho phép.
 

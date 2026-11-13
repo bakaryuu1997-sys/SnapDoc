@@ -15,9 +15,11 @@
 
 ## 📦 Install
 
+[![Latest Release](https://img.shields.io/github/v/release/bakaryuu1997-sys/SnapDoc?color=blue&label=Download%20SnapDoc%20v3.9.5)](https://github.com/bakaryuu1997-sys/SnapDoc/releases/latest)
+
 **Requirements:** Windows 10/11 x64, [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (preinstalled on Windows 11). ≥ 8 GB RAM recommended for the larger subtitle models.
 
-1. Run `SnapDoc_<version>_x64-setup.exe` (in the project's `release/` folder).
+1. Download [SnapDoc_3.9.5_x64-setup.exe](https://github.com/bakaryuu1997-sys/SnapDoc/releases/latest) (or run the installer in the project's `release/` folder).
 2. SnapDoc runs in the background with a tray icon next to the clock.
 3. Allow the permissions Windows asks for (screen recording; camera/mic only if you use them).
 
