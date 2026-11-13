@@ -106,13 +106,7 @@ fn run_action(app: &AppHandle, action: &str) {
     match action {
         "textGrab" => {
             let app = app.clone();
-            std::thread::spawn(move || {
-                flow::hide_editor_for_freeze(&app);
-                if let Err(e) = windows::open_overlays(&app, "text-grab") {
-                    windows::show_editor_if_hidden_for_capture(&app);
-                    crate::notify::error(&app, &format!("Không mở được trích xuất chữ: {e}"));
-                }
-            });
+            std::thread::spawn(move || flow::start_text_grab(&app));
         }
         "bar" => {
             let _ = windows::open_capture_bar(app);

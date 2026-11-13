@@ -1357,6 +1357,17 @@ pub fn capture_all_screens(app: &AppHandle, output: &str) -> Result<(), String> 
 /// đúng vùng nhỏ đã chọn (nhanh), rồi ghép chú thích. Đúng yêu cầu "vẽ khung
 /// xong chưa chụp, di chuyển được, tới lúc lưu/copy mới chụp".
 pub fn start_quick(app: &AppHandle) {
+    start_overlay_session(app, "quick");
+}
+
+/// "Text Grab" (Ctrl+Shift+T): cùng quy trình với Chụp nhanh — PHẢI đóng băng màn hình
+/// (`take_frozen_screens_async`) trước khi mở overlay, nếu không overlay không có ảnh
+/// nền để cắt vùng chọn và lặng lẽ tự huỷ (không có chữ nào vào clipboard).
+pub fn start_text_grab(app: &AppHandle) {
+    start_overlay_session(app, "text-grab");
+}
+
+fn start_overlay_session(app: &AppHandle, overlay_mode: &str) {
     if blocked_by_recording(app) {
         return;
     }
@@ -1410,7 +1421,7 @@ pub fn start_quick(app: &AppHandle) {
     }
     take_frozen_screens_async(app);
     let result: Result<(), String> = (|| {
-        windows::open_overlays(app, "quick")
+        windows::open_overlays(app, overlay_mode)
     })();
     if let Err(e) = result {
         clear_frozen_screens(app);

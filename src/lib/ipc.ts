@@ -406,6 +406,8 @@ export const ipc = {
     invoke<void>("capture_now", { mode, output }),
   /** Chụp nhanh: mở overlay trong suốt trên mọi màn hình để chọn vùng + chú thích. */
   startQuick: () => invoke<void>("start_quick"),
+  /** Trích xuất chữ (Text Grab): mở overlay trên mọi màn hình để OCR vào clipboard. */
+  startTextGrab: () => invoke<void>("start_text_grab"),
   /** Chụp đúng vùng đã chọn (ẩn overlay trước khi chụp) → base64 PNG. */
   captureQuickRegion: (x: number, y: number, w: number, h: number) =>
     invoke<string>("capture_quick_region", { x, y, w, h }),

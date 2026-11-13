@@ -34,6 +34,15 @@ export default function CommandPalette() {
       action: () => { ipc.startQuick().catch(() => {}); },
     },
     {
+      id: "capture-text-grab",
+      category: t("commandPalette.categoryCapture", "Chụp ảnh"),
+      icon: "📋",
+      title: t("commandPalette.textGrab", "Trích xuất chữ (Text Grab)"),
+      subtitle: t("commandPalette.textGrabDesc", "Chọn vùng chụp và trích xuất chữ vào Clipboard"),
+      shortcut: "Ctrl+Shift+T",
+      action: () => { ipc.startTextGrab().catch(() => {}); },
+    },
+    {
       id: "capture-region",
       category: t("commandPalette.categoryCapture", "Chụp ảnh"),
       icon: "✂️",

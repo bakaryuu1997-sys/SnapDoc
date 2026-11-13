@@ -142,6 +142,15 @@ pub fn start_quick(app: AppHandle) {
     std::thread::spawn(move || flow::start_quick(&app));
 }
 
+/// "Text Grab": mở overlay trích xuất chữ trên mọi màn hình.
+#[tauri::command]
+pub fn start_text_grab(app: AppHandle) {
+    if !flow::try_begin_capture_trigger(&app) {
+        return;
+    }
+    std::thread::spawn(move || flow::start_text_grab(&app));
+}
+
 /// Chụp đúng vùng đã chọn cho "Chụp nhanh", trả base64 PNG cho React ghép chú thích.
 /// async + spawn_blocking: không block Tokio event loop (WebView2 pump chạy tiếp).
 #[tauri::command]

@@ -164,6 +164,7 @@ pub fn run() {
             commands::capture_now,
             commands::cancel_capture_countdown,
             commands::start_quick,
+            commands::start_text_grab,
             commands::capture_quick_region,
             commands::finalize_region,
             commands::finalize_window,

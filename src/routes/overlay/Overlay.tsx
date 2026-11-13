@@ -538,39 +538,27 @@ function RegionSelect() {
       const r = rectFrom(s[0], s[1], x, y);
       if (r.w >= 3 && r.h >= 3) {
         if (session.mode === "text-grab") {
-          // Text Grab: cắt vùng chọn từ ảnh đóng băng, giao cho CaptureBar (cửa sổ
-          // nền luôn sống) làm OCR + chép clipboard, rồi đóng TẤT CẢ overlay
-          // (overlay-0, overlay-1…) ngay — `closeSelf` chỉ đóng overlay hiện tại
-          // nên màn hình còn lại bị kẹt.
-          const img = frozenImgRef.current;
-          if (!img) {
+          // Text Grab: cắt vùng chọn bằng `capture_quick_region` (Rust cắt từ ảnh
+          // đóng băng của màn hình này nếu có, nếu không thì chụp trực tiếp sau
+          // khi ẩn overlay — vd màn hình đang có cửa sổ Editor bị loại khỏi ảnh
+          // đóng băng), giao ảnh cho CaptureBar (cửa sổ nền luôn sống) làm OCR +
+          // chép clipboard, rồi đóng TẤT CẢ overlay (overlay-0, overlay-1…).
+          // `closeSelf` chỉ đóng overlay hiện tại nên màn hình còn lại bị kẹt.
+          if (r.w < 6 || r.h < 6) {
             ipc.cancelOverlay().catch(() => {});
             return;
           }
-          const scaleX = img.naturalWidth / window.innerWidth;
-          const scaleY = img.naturalHeight / window.innerHeight;
-          const sx = Math.round(r.x * scaleX);
-          const sy = Math.round(r.y * scaleY);
-          const sw = Math.round(r.w * scaleX);
-          const sh = Math.round(r.h * scaleY);
-
-          if (sw < 6 || sh < 6) {
-            ipc.cancelOverlay().catch(() => {});
-            return;
-          }
-
-          const offCanvas = document.createElement("canvas");
-          offCanvas.width = sw;
-          offCanvas.height = sh;
-          const offCtx = offCanvas.getContext("2d");
-          if (offCtx) {
-            offCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-            const dataUrl = offCanvas.toDataURL("image/png");
-            emit("snapdoc-process-text-grab", { dataUrl }).catch((err) => {
-              console.error("[SnapDoc] Emit text-grab failed:", err);
+          ipc.captureQuickRegion(r.x, r.y, r.w, r.h)
+            .then((b64) =>
+              emit("snapdoc-process-text-grab", { dataUrl: `data:image/png;base64,${b64}` }),
+            )
+            .catch((err) => {
+              console.error("[SnapDoc] Text Grab capture/emit failed:", err);
+              ipc.showToast(`⚠️ Không lấy được vùng vừa chọn: ${String(err)}`).catch(() => {});
+            })
+            .finally(() => {
+              ipc.cancelOverlay().catch(() => {});
             });
-          }
-          ipc.cancelOverlay().catch(() => {});
           return;
         }
 
