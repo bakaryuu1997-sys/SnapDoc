@@ -49,6 +49,67 @@ pub fn persist(img: &RgbaImage) -> Result<Capture, String> {
     })
 }
 
+/// Mã hoá PNG nén tối ưu (lossless) cho việc ghi ra đĩa:
+/// - Nếu mọi pixel có alpha = 255 thì encode dạng RGB8 (tiết kiệm 25% kênh alpha thừa).
+/// - Dùng `CompressionType::Default` + `FilterType::Adaptive`.
+pub fn encode_png_compact(img: &RgbaImage) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    let is_opaque = img.pixels().all(|p| p.0[3] == 255);
+    let encoder = PngEncoder::new_with_quality(&mut bytes, CompressionType::Default, FilterType::Adaptive);
+    if is_opaque {
+        let (w, h) = (img.width(), img.height());
+        let raw = img.as_raw();
+        let mut rgb = Vec::with_capacity((w * h * 3) as usize);
+        for chunk in raw.chunks_exact(4) {
+            rgb.push(chunk[0]);
+            rgb.push(chunk[1]);
+            rgb.push(chunk[2]);
+        }
+        encoder
+            .write_image(&rgb, w, h, ExtendedColorType::Rgb8)
+            .map_err(|e| format!("Lỗi mã hoá PNG compact RGB: {e}"))?;
+    } else {
+        encoder
+            .write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgba8)
+            .map_err(|e| format!("Lỗi mã hoá PNG compact RGBA: {e}"))?;
+    }
+    Ok(bytes)
+}
+
+/// Nén lại dữ liệu ảnh PNG trước khi ghi ra đĩa: decode rồi encode lại bằng `encode_png_compact`.
+/// Best-effort: nếu lỗi hoặc kết quả không nhỏ hơn thì trả lại bytes gốc.
+pub fn recompress_png(bytes: &[u8]) -> Vec<u8> {
+    if !bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        return bytes.to_vec();
+    }
+    let start = std::time::Instant::now();
+    let Ok(img) = image::load_from_memory(bytes) else {
+        return bytes.to_vec();
+    };
+    let rgba = img.to_rgba8();
+    match encode_png_compact(&rgba) {
+        Ok(compact) => {
+            let elapsed = start.elapsed();
+            if compact.len() < bytes.len() {
+                eprintln!(
+                    "[SnapDoc Timing] recompress_png: {} bytes -> {} bytes ({:.1}% giảm) trong {:?}",
+                    bytes.len(),
+                    compact.len(),
+                    (1.0 - (compact.len() as f64 / bytes.len() as f64)) * 100.0,
+                    elapsed
+                );
+                compact
+            } else {
+                bytes.to_vec()
+            }
+        }
+        Err(e) => {
+            eprintln!("[SnapDoc] recompress_png thất bại ({e}), giữ bytes gốc");
+            bytes.to_vec()
+        }
+    }
+}
+
 /// Mã hoá JPEG chất lượng cao (mặc định quality 92) — đặc biệt tối ưu cho ảnh cuộn siêu dài.
 /// Giảm 85-90% dung lượng RAM/file và kích hoạt Hardware JPEG Decoder trên WebKit macOS.
 pub fn encode_jpeg(img: &RgbaImage, quality: u8) -> Result<Vec<u8>, String> {
@@ -158,5 +219,108 @@ pub fn persist_scroll(img: &RgbaImage) -> Result<Capture, String> {
         width: img.width(),
         height: img.height(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::Rgba;
+
+    #[test]
+    fn test_encode_png_compact_and_recompress_opaque() {
+        let mut img = RgbaImage::new(100, 100);
+        for x in 0..100 {
+            for y in 0..100 {
+                img.put_pixel(x, y, Rgba([(x * 2) as u8, (y * 2) as u8, ((x + y) % 256) as u8, 255]));
+            }
+        }
+        let fast_bytes = encode_png(&img).expect("encode_png fast");
+        let compact_bytes = recompress_png(&fast_bytes);
+
+        assert!(
+            compact_bytes.len() < fast_bytes.len(),
+            "compact ({}) phải nhỏ hơn fast ({})",
+            compact_bytes.len(),
+            fast_bytes.len()
+        );
+
+        // Decode cả hai và so sánh từng pixel bằng nhau
+        let decoded_fast = image::load_from_memory(&fast_bytes).unwrap().to_rgba8();
+        let decoded_compact = image::load_from_memory(&compact_bytes).unwrap().to_rgba8();
+        assert_eq!(decoded_fast.dimensions(), decoded_compact.dimensions());
+        for (p1, p2) in decoded_fast.pixels().zip(decoded_compact.pixels()) {
+            assert_eq!(p1, p2, "Mỗi pixel phải giống hệt giữa fast và compact");
+        }
+    }
+
+    #[test]
+    fn test_encode_png_compact_with_alpha() {
+        let mut img = RgbaImage::new(50, 50);
+        for x in 0..50 {
+            for y in 0..50 {
+                let alpha = if (x + y) % 2 == 0 { 255 } else { 128 };
+                img.put_pixel(x, y, Rgba([x as u8, y as u8, 200, alpha]));
+            }
+        }
+        let fast_bytes = encode_png(&img).expect("encode_png fast");
+        let compact_bytes = recompress_png(&fast_bytes);
+
+        let decoded_fast = image::load_from_memory(&fast_bytes).unwrap().to_rgba8();
+        let decoded_compact = image::load_from_memory(&compact_bytes).unwrap().to_rgba8();
+        assert_eq!(decoded_fast.dimensions(), decoded_compact.dimensions());
+        for (p1, p2) in decoded_fast.pixels().zip(decoded_compact.pixels()) {
+            assert_eq!(p1, p2, "Pixel có alpha phải được bảo toàn chính xác");
+        }
+    }
+
+    #[test]
+    fn test_benchmark_compression_sizes() {
+        let test_cases = [
+            ("1080p (1920x1080)", 1920, 1080),
+            ("2K / 1440p (2560x1440)", 2560, 1440),
+            ("2 màn hình (3840x1080)", 3840, 1080),
+        ];
+
+        println!("\n=== BẢNG ĐO LƯỜNG NÉN PNG T1 ===");
+        println!("| Trường hợp | Trước (Fast) | Sau (Compact) | Giảm | Thời gian nén |");
+        println!("|---|---|---|---|---|");
+
+        for (name, w, h) in test_cases {
+            let mut img = RgbaImage::new(w, h);
+            // Giả lập giao diện desktop: nền màu đậm, một số thanh taskbar, cửa sổ
+            for x in 0..w {
+                for y in 0..h {
+                    let pixel = if y < 40 {
+                        Rgba([32, 34, 37, 255]) // thanh tiêu đề
+                    } else if y > h - 48 {
+                        Rgba([24, 25, 28, 255]) // taskbar
+                    } else if x > 200 && x < w - 200 && y > 100 && y < h - 100 {
+                        if (x / 30 + y / 30) % 2 == 0 {
+                            Rgba([245, 245, 247, 255])
+                        } else {
+                            Rgba([255, 255, 255, 255])
+                        }
+                    } else {
+                        Rgba([45, 52, 64, 255])
+                    };
+                    img.put_pixel(x, y, pixel);
+                }
+            }
+
+            let fast = encode_png(&img).unwrap();
+            let start = std::time::Instant::now();
+            let compact = encode_png_compact(&img).unwrap();
+            let elapsed = start.elapsed();
+
+            let fast_mb = fast.len() as f64 / (1024.0 * 1024.0);
+            let compact_mb = compact.len() as f64 / (1024.0 * 1024.0);
+            let pct = (1.0 - (compact.len() as f64 / fast.len() as f64)) * 100.0;
+
+            println!(
+                "| {} | {:.2} MB | {:.2} MB | {:.1}% | {:?} |",
+                name, fast_mb, compact_mb, pct, elapsed
+            );
+        }
+    }
 }
 

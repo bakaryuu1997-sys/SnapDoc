@@ -226,12 +226,16 @@ pub fn ingest_with_doc(
 /// `file_size`. Lỗi → soft-delete record thay vì để row mồ côi.
 fn ingest_finish_bg(app: &AppHandle, id: String, asset_path: PathBuf, thumb_path: PathBuf, base64: &str, doc_json: Option<&str>, preview_base64: Option<&str>) {
     let write_result = (|| -> Result<i64, String> {
-        let bytes = decode_image_data(base64)?;
+        let raw_bytes = decode_image_data(base64)?;
+        let bytes = capture::recompress_png(&raw_bytes);
         let effective_doc = doc_json.unwrap_or(EMPTY_DOC_JSON);
         // Preview cho thumbnail: ưu tiên bản đã ghép annotation nếu có,
         // ngược lại dùng chính ảnh nền (không có annotation).
         let preview_bytes = match preview_base64 {
-            Some(p) => decode_image_data(p)?,
+            Some(p) => {
+                let raw_prev = decode_image_data(p)?;
+                capture::recompress_png(&raw_prev)
+            }
             None    => bytes.clone(),
         };
         let now = now_ms();

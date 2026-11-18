@@ -654,7 +654,8 @@ pub fn finish(
         "save" | "save_copy" => {
             let save_dir = resolve_save_dir(app);
             let path = format!("{save_dir}/{}.png", stamp_filename("Screenshot"));
-            let saved = storage::save::write_bytes(&path, &cap.bytes)?;
+            let compressed = capture::recompress_png(&cap.bytes);
+            let saved = storage::save::write_bytes(&path, &compressed)?;
             if output == "save_copy" {
                 clipboard::copy_png_bytes(&cap.bytes)?;
             }
@@ -703,7 +704,12 @@ fn auto_export_copy(app: &AppHandle, cap: &capture::Capture, history_id: Option<
     let is_jpeg = cap.bytes.starts_with(&[0xFF, 0xD8]);
     let ext = if is_jpeg { "jpg" } else { "png" };
     let path = format!("{save_dir}/{}.{ext}", stamp_filename("Screenshot"));
-    match storage::save::write_bytes(&path, &cap.bytes) {
+    let bytes_to_write = if is_jpeg {
+        cap.bytes.clone()
+    } else {
+        capture::recompress_png(&cap.bytes)
+    };
+    match storage::save::write_bytes(&path, &bytes_to_write) {
         Ok(saved) => {
             if let Some(id) = history_id {
                 if let Err(e) = crate::history::commands::set_history_exported_path_sync(app, id, &saved) {

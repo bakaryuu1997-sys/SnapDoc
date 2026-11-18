@@ -448,7 +448,7 @@ fn save_history_doc_sync(
     if rec.media_type == "video" {
         return Err("Video chưa hỗ trợ chỉnh sửa".to_string());
     }
-    let preview_bytes = decode_image_data(preview_data)?;
+    let preview_bytes = crate::capture::recompress_png(&decode_image_data(preview_data)?);
 
     let old_path = std::path::Path::new(&rec.asset_path).to_path_buf();
     let new_path = super::assets::snapdoc_path_for(app, id)?;
@@ -462,7 +462,7 @@ fn save_history_doc_sync(
         // có. Với PNG cũ thì "nền đang có" chính là cả file.
         let (base_bytes, created_at) = match base_data {
             Some(d) => (
-                decode_image_data(d)?,
+                crate::capture::recompress_png(&decode_image_data(d)?),
                 if was_snapdoc {
                     crate::snapdoc_file::read_snapdoc(&old_path)
                         .map(|f| f.created_at)
