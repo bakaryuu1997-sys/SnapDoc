@@ -13,6 +13,7 @@ pub const DEFAULT_SCROLL: &str = "CmdOrCtrl+Shift+6";
 pub const DEFAULT_QUICK: &str = "CmdOrCtrl+Shift+Q";
 pub const DEFAULT_RECORD: &str = "CmdOrCtrl+Shift+7";
 pub const DEFAULT_TEXT_GRAB: &str = "CmdOrCtrl+Shift+T";
+pub const DEFAULT_TEXT_GRAB_REDO: &str = "CmdOrCtrl+Shift+Y";
 
 /// Lấy map (action → combo) từ settings.
 /// Trả về empty string nếu user đã xóa phím tắt (không fall back về default).
@@ -42,6 +43,9 @@ pub fn shortcuts_from_settings(app: &AppHandle) -> Vec<(String, String)> {
         ("quick".into(),       get("quick",       DEFAULT_QUICK)),
         ("record".into(),      get("record",      DEFAULT_RECORD)),
         ("textGrab".into(),    get("textGrab",    DEFAULT_TEXT_GRAB)),
+        ("textGrabRedo".into(), get("textGrabRedo", DEFAULT_TEXT_GRAB_REDO)),
+        ("textGrabJa".into(),  get("textGrabJa",   "")),
+        ("textGrabVi".into(),  get("textGrabVi",   "")),
     ]
 }
 
@@ -97,7 +101,7 @@ pub fn handle(app: &AppHandle, fired: &Shortcut) {
 
 fn run_action(app: &AppHandle, action: &str) {
     // Chống spam phím tắt (xem `flow::try_begin_capture_trigger`).
-    if matches!(action, "region" | "full" | "quick" | "window" | "all" | "scroll" | "captureCopy" | "textGrab")
+    if matches!(action, "region" | "full" | "quick" | "window" | "all" | "scroll" | "captureCopy" | "textGrab" | "textGrabJa" | "textGrabVi")
         && !flow::try_begin_capture_trigger(app)
     {
         return;
@@ -105,6 +109,22 @@ fn run_action(app: &AppHandle, action: &str) {
 
     match action {
         "textGrab" => {
+            let app = app.clone();
+            std::thread::spawn(move || flow::start_text_grab(&app));
+        }
+        "textGrabRedo" => {
+            use tauri::Emitter;
+            let _ = app.emit("snapdoc-redo-text-grab", ());
+        }
+        "textGrabJa" => {
+            use tauri::Emitter;
+            let _ = app.emit("snapdoc-ocr-lang-changed", serde_json::json!({ "lang": "ja" }));
+            let app = app.clone();
+            std::thread::spawn(move || flow::start_text_grab(&app));
+        }
+        "textGrabVi" => {
+            use tauri::Emitter;
+            let _ = app.emit("snapdoc-ocr-lang-changed", serde_json::json!({ "lang": "vi" }));
             let app = app.clone();
             std::thread::spawn(move || flow::start_text_grab(&app));
         }

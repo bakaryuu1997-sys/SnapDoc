@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { ipc, type CaptureMode, type OutputMode } from "../../lib/ipc";
 import { showError } from "../../lib/notify";
 import { recognizeImage } from "../../lib/ocrService";
+import { type OcrLanguageMode, getSavedOcrLang } from "../../lib/ocrLanguage";
 import { useFileDrop } from "../../lib/useFileDrop";
 
 type RecordMode = "full" | "window" | "region";
@@ -78,6 +79,7 @@ export default function CaptureBar() {
   const [videoMode, setVideoMode] = useState<RecordMode>("full");
   const [activeGroup, setActiveGroup] = useState<ActiveGroup>("photo");
   const [output, setOutput] = useState<OutputMode>("editor");
+  const lastTextGrabDataUrlRef = useRef<string | null>(null);
   const [shortcuts, setShortcuts] = useState<Record<string, string>>({
     quick: "CmdOrCtrl+Shift+X",
     record: "CmdOrCtrl+Shift+R",
@@ -162,9 +164,20 @@ export default function CaptureBar() {
 
     // Text Grab (Ctrl+Shift+T): overlay gửi ảnh vùng chọn sang đây để OCR ngầm
     // rồi chép chữ vào clipboard (overlay đã đóng hết trên mọi màn hình).
-    const unlistenTextGrab = listen<{ dataUrl: string }>("snapdoc-process-text-grab", async (event) => {
-      const { dataUrl } = event.payload || {};
+    const unlistenTextGrab = listen<{ dataUrl: string; lang?: OcrLanguageMode }>("snapdoc-process-text-grab", async (event) => {
+      const { dataUrl, lang } = event.payload || {};
       if (!dataUrl) return;
+      lastTextGrabDataUrlRef.current = dataUrl;
+      const targetLang = lang || getSavedOcrLang();
+      const langNames: Record<OcrLanguageMode, string> = {
+        auto: "Tự động",
+        vi: "Tiếng Việt",
+        ja: "日本語",
+        zh: "中文",
+        en: "English",
+      };
+      const langLabel = langNames[targetLang] || targetLang;
+
       const preview = (text: string) =>
         text.length > 55 ? text.slice(0, 55).replace(/\s+/g, " ") + "..." : text.replace(/\s+/g, " ");
       const done = async (text: string) => {
@@ -172,15 +185,15 @@ export default function CaptureBar() {
         if (navigator.clipboard?.writeText) {
           await navigator.clipboard.writeText(text).catch(() => {});
         }
-        await ipc.showToast(`📋 Đã sao chép văn bản vào Clipboard: "${preview(text)}"`);
+        await ipc.showToast(`📋 Đã sao chép (${langLabel}): "${preview(text)}"`);
       };
       try {
-        const res = await recognizeImage(dataUrl);
+        const res = await recognizeImage(dataUrl, targetLang);
         const text = (res?.text || "").trim();
         if (text) {
           await done(text);
         } else {
-          await ipc.showToast("⚠️ Không tìm thấy văn bản trong vùng vừa chọn");
+          await ipc.showToast(`⚠️ Không tìm thấy văn bản trong vùng vừa chọn (${langLabel})`);
         }
       } catch (err) {
         console.error("[SnapDoc] OCR text-grab failed, fallback to native OCR:", err);
@@ -194,8 +207,21 @@ export default function CaptureBar() {
         } catch (e) {
           console.error("[SnapDoc] Native OCR text-grab fallback failed:", e);
         }
-        await ipc.showToast("⚠️ Không tìm thấy văn bản trong vùng vừa chọn").catch(() => {});
+        await ipc.showToast(`⚠️ Không tìm thấy văn bản trong vùng vừa chọn (${langLabel})`).catch(() => {});
       }
+    });
+
+    // Đọc lại lần Text Grab gần nhất bằng ngôn ngữ khác (Ctrl+Shift+Y)
+    const unlistenTextGrabRedo = listen("snapdoc-redo-text-grab", async () => {
+      const lastUrl = lastTextGrabDataUrlRef.current;
+      if (!lastUrl) {
+        await ipc.showToast("⚠️ Chưa có lần trích xuất chữ (Text Grab) nào trước đó");
+        return;
+      }
+      await ipc.openEditor().catch(() => {});
+      setTimeout(() => {
+        emit("open-image-ocr", { dataUrl: lastUrl }).catch(() => {});
+      }, 250);
     });
 
     const onKey = (e: KeyboardEvent) => {
@@ -229,6 +255,7 @@ export default function CaptureBar() {
     return () => {
       window.removeEventListener("keydown", onKey);
       unlistenTextGrab.then((fn) => fn());
+      unlistenTextGrabRedo.then((fn) => fn());
       unlistenRecordMode.then((fn) => fn());
       unlistenSettings.then((fn) => fn());
     };

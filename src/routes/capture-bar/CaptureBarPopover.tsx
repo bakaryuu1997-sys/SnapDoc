@@ -1,8 +1,14 @@
 import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { ipc, type AudioSource, type OutputMode } from "../../lib/ipc";
 import { showError } from "../../lib/notify";
+import {
+  type OcrLanguageMode,
+  getSavedOcrLang,
+  saveOcrLang,
+  normalizeOcrLang,
+} from "../../lib/ocrLanguage";
 
 export default function CaptureBarPopover() {
   const { t } = useTranslation();
@@ -11,6 +17,7 @@ export default function CaptureBarPopover() {
   const [showKeystrokes, setShowKeystrokes] = useState(false);
   const [showClicks, setShowClicks] = useState(true);
   const [delaySeconds, setDelaySeconds] = useState<0 | 5 | 10>(0);
+  const [ocrLanguage, setOcrLanguage] = useState<OcrLanguageMode>(getSavedOcrLang());
   const userPickedRef = useRef(false);
 
   const OUTPUTS: { id: OutputMode; label: string }[] = [
@@ -34,6 +41,14 @@ export default function CaptureBarPopover() {
     { id: 10, label: t("captureBar.delay10s") },
   ];
 
+  const OCR_LANGUAGES: { id: OcrLanguageMode; label: string }[] = [
+    { id: "auto", label: "🌐 Tự động" },
+    { id: "vi",   label: "🇻🇳 Tiếng Việt + English" },
+    { id: "ja",   label: "🇯🇵 日本語 + English" },
+    { id: "zh",   label: "🇨🇳 中文 + English" },
+    { id: "en",   label: "🇺🇸 English" },
+  ];
+
   const refreshSettings = () => {
     ipc.getSettings().then((s) => {
       if (s?.defaultOutput) setOutput(s.defaultOutput);
@@ -42,6 +57,9 @@ export default function CaptureBarPopover() {
       if (typeof s?.recordShowClicks === "boolean") setShowClicks(s.recordShowClicks);
       if (s?.timerSeconds === 0 || s?.timerSeconds === 5 || s?.timerSeconds === 10) {
         setDelaySeconds(s.timerSeconds);
+      }
+      if (s?.ocrLanguage) {
+        setOcrLanguage(normalizeOcrLang(s.ocrLanguage));
       }
     }).catch(() => {});
   };
@@ -66,6 +84,9 @@ export default function CaptureBarPopover() {
       const timer = e.payload?.timerSeconds;
       if (timer === 0 || timer === 5 || timer === 10) {
         setDelaySeconds(timer as 0 | 5 | 10);
+      }
+      if (e.payload?.ocrLanguage) {
+        setOcrLanguage(normalizeOcrLang(e.payload.ocrLanguage as string));
       }
     });
 
@@ -139,6 +160,13 @@ export default function CaptureBarPopover() {
     });
   };
 
+  const selectOcrLanguage = (mode: OcrLanguageMode) => {
+    setOcrLanguage(mode);
+    saveOcrLang(mode);
+    emit("snapdoc-ocr-lang-changed", { lang: mode }).catch(() => {});
+    ipc.hideCaptureBarPopover().catch(() => {});
+  };
+
   return (
     <div style={container}>
       <div style={popoverBox}>
@@ -203,6 +231,23 @@ export default function CaptureBarPopover() {
           >
             <span style={{ flex: 1, textAlign: "left" }}>{d.label}</span>
             {delaySeconds === d.id && <span style={checkMark}>✓</span>}
+          </button>
+        ))}
+
+        {/* Divider */}
+        <div style={popDivider} />
+
+        {/* Section 4: Ngôn ngữ OCR */}
+        <div style={popSectionLabel}>{t("captureBar.ocrLanguageSection", "NGÔN NGỮ OCR")}</div>
+        {OCR_LANGUAGES.map((l) => (
+          <button
+            key={l.id}
+            style={popItem(ocrLanguage === l.id)}
+            onClick={() => selectOcrLanguage(l.id)}
+            className="popover-btn"
+          >
+            <span style={{ flex: 1, textAlign: "left" }}>{l.label}</span>
+            {ocrLanguage === l.id && <span style={checkMark}>✓</span>}
           </button>
         ))}
 

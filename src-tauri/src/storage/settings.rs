@@ -50,6 +50,9 @@ pub fn validate(v: &Value) -> Result<(), String> {
     if !one_of("format", &["png", "jpg", "webp"]) {
         return Err("`format` phải là png/jpg/webp".into());
     }
+    if !one_of("ocrLanguage", &["auto", "vi", "en", "ja", "zh"]) {
+        return Err("`ocrLanguage` phải là auto/vi/en/ja/zh".into());
+    }
     if !one_of("defaultOutput", &["editor", "clipboard", "save", "save_copy", "copy_editor"]) {
         return Err("`defaultOutput` không hợp lệ".into());
     }
@@ -134,6 +137,7 @@ fn defaults() -> Value {
         "recordShowKeystrokes": false,
         "recordShowClicks": true,
         "language": "vi",
+        "ocrLanguage": "auto",
         "shortcuts": {
             "captureBar": "CmdOrCtrl+Shift+5",
             "full": "CmdOrCtrl+Shift+1",
@@ -142,7 +146,9 @@ fn defaults() -> Value {
             "all": "CmdOrCtrl+Shift+4",
             "captureCopy": "CmdOrCtrl+Shift+C",
             "scroll": "CmdOrCtrl+Shift+6",
-            "record": "CmdOrCtrl+Shift+7"
+            "record": "CmdOrCtrl+Shift+7",
+            "textGrab": "CmdOrCtrl+Shift+T",
+            "textGrabRedo": "CmdOrCtrl+Shift+Y"
         }
     })
 }

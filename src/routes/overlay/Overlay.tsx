@@ -10,6 +10,7 @@ import { PRESET_COLORS, type Tool } from "../../features/annotation/model";
 import { quickToolFromKey } from "../../lib/toolShortcuts";
 import QuickToolbar, { quickToolbarLayout } from "../quick-capture/QuickToolbar";
 import { serializeDoc } from "../../features/annotation/sessions";
+import { type OcrLanguageMode, getSavedOcrLang, saveOcrLang } from "../../lib/ocrLanguage";
 
 /**
  * Lấy ảnh "đóng băng màn hình" từ Rust (JPEG base64) khi mount overlay.
@@ -412,8 +413,42 @@ function RegionSelect() {
     img.onload = () => { frozenImgRef.current = img; };
   }, [frozenUrl]);
 
+  const [textGrabLang, setTextGrabLang] = useState<OcrLanguageMode>(getSavedOcrLang());
+  const textGrabLangRef = useRef<OcrLanguageMode>(textGrabLang);
+  useEffect(() => {
+    textGrabLangRef.current = textGrabLang;
+  }, [textGrabLang]);
+
+  useEffect(() => {
+    const unlistenLang = listen<{ lang: OcrLanguageMode }>("snapdoc-ocr-lang-changed", (event) => {
+      if (event.payload?.lang) {
+        setTextGrabLang(event.payload.lang);
+        textGrabLangRef.current = event.payload.lang;
+      }
+    });
+    return () => {
+      unlistenLang.then((fn) => fn());
+    };
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (session.mode === "text-grab") {
+        let newLang: OcrLanguageMode | null = null;
+        if (e.key === "1") newLang = "auto";
+        else if (e.key === "2") newLang = "vi";
+        else if (e.key === "3") newLang = "ja";
+        else if (e.key === "4") newLang = "zh";
+        else if (e.key === "5") newLang = "en";
+        if (newLang) {
+          e.preventDefault();
+          setTextGrabLang(newLang);
+          textGrabLangRef.current = newLang;
+          saveOcrLang(newLang);
+          emit("snapdoc-ocr-lang-changed", { lang: newLang }).catch(() => {});
+          return;
+        }
+      }
       if (e.shiftKey && (e.key === "c" || e.key === "C")) {
         e.preventDefault();
         setColorFormat((prev) => {
@@ -432,7 +467,7 @@ function RegionSelect() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [session.mode]);
   const startRef = useRef<Vec2 | null>(null);
   const [sel, setSel] = useState<Sel | null>(null);
   // Vùng vừa chốt (mouseup) — giữ lại NGOÀI `sel` (bị xoá về null ngay khi thả
@@ -550,7 +585,10 @@ function RegionSelect() {
           }
           ipc.captureQuickRegion(r.x, r.y, r.w, r.h)
             .then((b64) =>
-              emit("snapdoc-process-text-grab", { dataUrl: `data:image/png;base64,${b64}` }),
+              emit("snapdoc-process-text-grab", {
+                dataUrl: `data:image/png;base64,${b64}`,
+                lang: textGrabLangRef.current,
+              }),
             )
             .catch((err) => {
               console.error("[SnapDoc] Text Grab capture/emit failed:", err);
@@ -666,7 +704,21 @@ function RegionSelect() {
             background: cursorHere ? "transparent" : frozenUrl ? "rgba(0,0,0,0.45)" : "rgba(0,0,0,0.5)",
           }}
         >
-          <div style={banner}>{session.mode === "text-grab" ? "📑 Kéo chọn vùng để trích xuất chữ vào Clipboard (Ctrl+Shift+T)" : t("overlay.dragToSelect")}</div>
+          <div style={banner}>
+            {session.mode === "text-grab"
+              ? `📑 Kéo chọn vùng để trích xuất chữ · Ngôn ngữ: ${
+                  textGrabLang === "auto"
+                    ? "Tự động"
+                    : textGrabLang === "ja"
+                    ? "日本語"
+                    : textGrabLang === "zh"
+                    ? "中文"
+                    : textGrabLang === "vi"
+                    ? "Tiếng Việt"
+                    : "English"
+                } (phím 1–5 để đổi)`
+              : t("overlay.dragToSelect")}
+          </div>
         </div>
       )}
       {/* Gợi ý cửa sổ khi hover — chỉ trước khi press (`sel === null`), ẩn

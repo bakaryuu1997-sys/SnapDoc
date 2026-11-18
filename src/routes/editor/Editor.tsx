@@ -594,6 +594,25 @@ export default function Editor() {
     const unOpenVideoFile = listen<string>("open-video-file", () => {
       void loadAnyPending();
     });
+
+    // Mở ảnh và tự động kích hoạt OCR Inspector (Text Grab Redo - Ctrl+Shift+Y)
+    const unOpenImageOcr = listen<{ dataUrl: string }>("open-image-ocr", async (e) => {
+      const url = e.payload?.dataUrl;
+      if (!url) return;
+      suspendActive();
+      setVideoDoc(null);
+      loadFromUrl(url);
+      try {
+        setBusy(true);
+        const res = await recognizeImage(url);
+        setOcrResult(res);
+        setShowOcrModal(true);
+      } catch (err) {
+        console.error("Lỗi OCR khi redo Text Grab:", err);
+      } finally {
+        setBusy(false);
+      }
+    });
     
     return () => {
       window.removeEventListener("focus", onFocus);
@@ -602,6 +621,7 @@ export default function Editor() {
       unFocus.then((f) => f());
       unOpenFile.then((f) => f());
       unOpenVideoFile.then((f) => f());
+      unOpenImageOcr.then((f) => f());
     };
   }, []);
 

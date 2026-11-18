@@ -151,7 +151,13 @@
     "scroll": "Capture scroll",
     "scrollHint": "Select area and scroll to combine long images",
     "textGrab": "Grab text (OCR)",
-    "textGrabHint": "Select a screen area; the text is copied straight to the clipboard"
+    "textGrabHint": "Select a screen area; the text is copied straight to the clipboard",
+    "textGrabRedo": "Re-run Text Grab in another language",
+    "textGrabRedoHint": "Open Editor and OCR Inspector with the latest Text Grab image",
+    "textGrabJa": "Text Grab (Japanese)",
+    "textGrabJaHint": "Text Grab with language fixed to Japanese",
+    "textGrabVi": "Text Grab (Vietnamese)",
+    "textGrabViHint": "Text Grab with language fixed to Vietnamese"
   },
   "tools": {
     "select": "Select / edit",
@@ -222,6 +228,7 @@
     "photoSection": "Photo",
     "videoSection": "Screen recording",
     "timerSection": "Timer",
+    "ocrLanguageSection": "OCR language",
     "aboutToCapture": "About to capture… (Esc to cancel)",
     "quickCaptureHint": "Quick capture — select area and annotate immediately",
     "options": "Options",

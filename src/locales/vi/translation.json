@@ -151,7 +151,13 @@
     "scroll": "Chụp cuộn",
     "scrollHint": "Chọn vùng rồi cuộn để ghép ảnh dài",
     "textGrab": "Trích xuất chữ (OCR)",
-    "textGrabHint": "Chọn vùng màn hình, chữ được chép thẳng vào clipboard"
+    "textGrabHint": "Chọn vùng màn hình, chữ được chép thẳng vào clipboard",
+    "textGrabRedo": "Đọc lại Text Grab bằng ngôn ngữ khác",
+    "textGrabRedoHint": "Mở Editor và thanh OCR Inspector với ảnh trích xuất chữ gần nhất",
+    "textGrabJa": "Trích xuất chữ (Tiếng Nhật)",
+    "textGrabJaHint": "Text Grab với ngôn ngữ cố định là Tiếng Nhật",
+    "textGrabVi": "Trích xuất chữ (Tiếng Việt)",
+    "textGrabViHint": "Text Grab với ngôn ngữ cố định là Tiếng Việt"
   },
   "tools": {
     "select": "Chọn / sửa",
@@ -222,6 +228,7 @@
     "photoSection": "Chụp ảnh",
     "videoSection": "Quay màn hình",
     "timerSection": "Hẹn giờ chụp",
+    "ocrLanguageSection": "Ngôn ngữ OCR",
     "aboutToCapture": "Sắp chụp… (Esc để huỷ)",
     "quickCaptureHint": "Chụp nhanh — chọn vùng rồi chú thích ngay tại chỗ",
     "options": "Tuỳ chọn",
