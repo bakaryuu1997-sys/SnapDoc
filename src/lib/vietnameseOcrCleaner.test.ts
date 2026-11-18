@@ -174,14 +174,42 @@ describe("Language-Aware Router (cleanOcrText)", () => {
     expect(cleanOcrText("AP1 Key", "en")).toBe("API Key");
   });
 
-  it("tự động nhận diện ngôn ngữ khi dùng chế độ đa ngôn ngữ (all)", () => {
-    expect(cleanOcrText("設 計 書 を 確 認", "all")).toBe("設計書を確認");
-    expect(cleanOcrText("bắt đầu thực hiện", "all")).toContain("bắt đầu");
+  it("tự động làm sạch từng dòng riêng biệt trong chế độ auto (T2)", () => {
+    const mixedInput = [
+      "設 計 書 を 確 認",
+      "thanh tiêu để\" bị lập đã\"y nên quét nhã\" m",
+      "export const AP1 = 'https://snapdoc.app' ;",
+    ].join("\n");
+
+    const cleaned = cleanOcrText(mixedInput, "auto");
+    const lines = cleaned.split("\n");
+
+    expect(lines[0]).toBe("設計書を確認");
+    expect(lines[1]).toContain("tiêu đề bị lấp đầy");
+    expect(lines[1]).toContain("quét nhầm");
+    expect(lines[2]).toBe("export const API = 'https://snapdoc.app';");
   });
 
   it("cleanOcrWord làm sạch từ đơn lẻ chính xác", () => {
     expect(cleanOcrWord("bă't", "vi")).toBe("bắt");
     expect(cleanOcrWord("mê`m", "vi")).toBe("mềm");
     expect(cleanOcrWord("AP1", "en")).toBe("API");
+    expect(cleanOcrWord("プ ロ", "auto")).toBe("プロ");
+    expect(cleanOcrWord("bă't", "auto")).toBe("bắt");
+  });
+});
+
+describe("OCR Language Normalizer (normalizeOcrLang)", () => {
+  it("chuyển đổi all thành auto và bảo toàn các ngôn ngữ hợp lệ", async () => {
+    const { normalizeOcrLang } = await import("./ocrLanguage");
+    expect(normalizeOcrLang("all")).toBe("auto");
+    expect(normalizeOcrLang(null)).toBe("auto");
+    expect(normalizeOcrLang(undefined)).toBe("auto");
+    expect(normalizeOcrLang("invalid")).toBe("auto");
+    expect(normalizeOcrLang("auto")).toBe("auto");
+    expect(normalizeOcrLang("vi")).toBe("vi");
+    expect(normalizeOcrLang("ja")).toBe("ja");
+    expect(normalizeOcrLang("en")).toBe("en");
+    expect(normalizeOcrLang("zh")).toBe("zh");
   });
 });

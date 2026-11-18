@@ -2,64 +2,17 @@ import { createWorker } from "tesseract.js";
 import { ipc, type OcrResult, type OcrWord } from "./ipc";
 import { cleanOcrText, cleanOcrWord } from "./vietnameseOcrCleaner";
 import { recognizePaddleOcr, preloadOcrModel } from "./paddleOcrService";
+import {
+  type OcrLanguageMode,
+  type OcrLangPreset,
+  OCR_LANG_PRESETS,
+  getSavedOcrLang,
+  saveOcrLang,
+  normalizeOcrLang,
+} from "./ocrLanguage";
 
-export { preloadOcrModel };
-
-export type OcrLanguageMode = "all" | "vi" | "ja" | "zh" | "en";
-
-export interface OcrLangPreset {
-  id: OcrLanguageMode;
-  label: string;
-  flag: string;
-  codes: string[];
-}
-
-export const OCR_LANG_PRESETS: Record<OcrLanguageMode, OcrLangPreset> = {
-  vi: {
-    id: "vi",
-    label: "Tiếng Việt + English (Khuyên dùng)",
-    flag: "🇻🇳",
-    codes: ["vie", "eng"],
-  },
-  en: {
-    id: "en",
-    label: "English only",
-    flag: "🇺🇸",
-    codes: ["eng"],
-  },
-  ja: {
-    id: "ja",
-    label: "日本語 (Tiếng Nhật) + English",
-    flag: "🇯🇵",
-    codes: ["jpn", "eng"],
-  },
-  zh: {
-    id: "zh",
-    label: "中文 (Tiếng Trung) + English",
-    flag: "🇨🇳",
-    codes: ["chi_sim", "chi_tra", "eng"],
-  },
-  all: {
-    id: "all",
-    label: "Đa ngôn ngữ",
-    flag: "🌐",
-    codes: ["vie", "eng"],
-  },
-};
-
-export function getSavedOcrLang(): OcrLanguageMode {
-  try {
-    const saved = localStorage.getItem("snapdoc_ocr_lang") as OcrLanguageMode;
-    if (saved && OCR_LANG_PRESETS[saved]) return saved;
-  } catch {}
-  return "vi"; // Mặc định Tiếng Việt + English để giữ nguyên khoảng trắng và chống lẫn Kanji
-}
-
-export function saveOcrLang(mode: OcrLanguageMode) {
-  try {
-    localStorage.setItem("snapdoc_ocr_lang", mode);
-  } catch {}
-}
+export { preloadOcrModel, OCR_LANG_PRESETS, getSavedOcrLang, saveOcrLang, normalizeOcrLang };
+export type { OcrLanguageMode, OcrLangPreset };
 
 const workerPool: Partial<Record<OcrLanguageMode, any>> = {};
 const initPromises: Partial<Record<OcrLanguageMode, Promise<any>>> = {};
@@ -74,7 +27,7 @@ export async function getOcrWorker(mode: OcrLanguageMode = getSavedOcrLang()) {
     return await initPromises[mode];
   }
 
-  const preset = OCR_LANG_PRESETS[mode] || OCR_LANG_PRESETS.all;
+  const preset = OCR_LANG_PRESETS[mode] || OCR_LANG_PRESETS.auto;
   const origin = window.location.origin;
 
   const initPromise = (async () => {
@@ -90,7 +43,7 @@ export async function getOcrWorker(mode: OcrLanguageMode = getSavedOcrLang()) {
         errorHandler: (err) => console.warn("[SnapDoc OCR Worker warning]", err),
       });
 
-      if (mode === "vi" || mode === "en" || mode === "all") {
+      if (mode === "vi" || mode === "en") {
         try {
           await worker.setParameters({
             tessedit_char_blacklist: "åÅäÄöÖüÜøØæÆßëËïÏÿŸ",
@@ -106,7 +59,7 @@ export async function getOcrWorker(mode: OcrLanguageMode = getSavedOcrLang()) {
       console.error("[SnapDoc OCR] Lỗi nạp worker offline:", err);
       // Fallback: nếu đường dẫn origin gặp giới hạn asset, dùng CDN dự phòng
       const worker = await createWorker(preset.codes);
-      if (mode === "vi" || mode === "en" || mode === "all") {
+      if (mode === "vi" || mode === "en") {
         try {
           await worker.setParameters({
             tessedit_char_blacklist: "åÅäÄöÖüÜøØæÆßëËïÏÿŸ",

@@ -1,9 +1,10 @@
 import * as ort from "onnxruntime-web";
 import { DetectionService, PaddleOcrService, Image as PaddleImage } from "paddleocr";
 import type { OcrResult, OcrWord, OcrLine } from "./ipc";
-import { cleanVietnameseOcrText } from "./vietnameseOcrCleaner";
+import { cleanVietnameseOcrText, cleanOcrText } from "./vietnameseOcrCleaner";
+import { type OcrLanguageMode, CJK_REGEX } from "./ocrLanguage";
 
-export type OcrLanguageMode = "vi" | "en" | "ja" | "zh" | "all";
+export type { OcrLanguageMode };
 
 export const VIETOCR_VOCAB =
   "aAàÀảẢãÃáÁạẠăĂằẰẳẲẵẴắẮặẶâÂầẦẩẨẫẪấẤậẬbBcCdDđĐeEèÈẻẺẽẼéÉẹẸêÊềỀểỂễỄếẾệỆ" +
@@ -423,10 +424,143 @@ function mergeAdjacentLinesInSameColumn(lines: OcrLine[]): OcrLine[] {
 }
 
 /**
+ * Nhận diện một box đơn lẻ bằng VieSVTR (hỗ trợ Tiếng Việt có dấu đầy đủ & Latin)
+ */
+async function recognizeBoxWithVieVi(
+  box: { x: number; y: number; width: number; height: number; columnId?: number },
+  origW: number,
+  origH: number,
+  rawRgba: Uint8ClampedArray,
+  recViSession: ort.InferenceSession
+): Promise<OcrLine | null> {
+  const bx = Math.max(0, Math.round(box.x) - 2);
+  const by = Math.max(0, Math.round(box.y) - 2);
+  const bw = Math.min(origW - bx, Math.round(box.width) + 4);
+  const bh = Math.min(origH - by, Math.round(box.height) + 4);
+
+  if (bw < 8 || bh < 8) return null;
+
+  let tw = Math.ceil(64 * (bw / bh));
+  tw = Math.ceil(tw / 4) * 4;
+  tw = Math.max(32, Math.min(1600, tw));
+
+  const area = 64 * tw;
+  const floatArr = new Float32Array(3 * area);
+
+  // Kiểm tra độ sáng trung bình để xử lý Dark mode
+  let totalLuma = 0;
+  for (let y = 0; y < bh; y += 2) {
+    for (let x = 0; x < bw; x += 2) {
+      const pixelIdx = ((by + y) * origW + (bx + x)) * 4;
+      totalLuma += 0.299 * rawRgba[pixelIdx] + 0.587 * rawRgba[pixelIdx + 1] + 0.114 * rawRgba[pixelIdx + 2];
+    }
+  }
+  const samplePixels = Math.max(1, Math.ceil(bh / 2) * Math.ceil(bw / 2));
+  const isDarkMode = totalLuma / samplePixels < 128;
+
+  const yRatio = bh / 64;
+  const xRatio = bw / tw;
+
+  for (let y = 0; y < 64; y++) {
+    const srcYFloat = (y + 0.5) * yRatio - 0.5;
+    const y0 = Math.max(0, Math.min(bh - 1, Math.floor(srcYFloat)));
+    const y1 = Math.max(0, Math.min(bh - 1, y0 + 1));
+    const wy1 = Math.max(0, Math.min(1, srcYFloat - y0));
+    const wy0 = 1.0 - wy1;
+
+    for (let x = 0; x < tw; x++) {
+      const srcXFloat = (x + 0.5) * xRatio - 0.5;
+      const x0 = Math.max(0, Math.min(bw - 1, Math.floor(srcXFloat)));
+      const x1 = Math.max(0, Math.min(bw - 1, x0 + 1));
+      const wx1 = Math.max(0, Math.min(1, srcXFloat - x0));
+      const wx0 = 1.0 - wx1;
+
+      const idx00 = ((by + y0) * origW + (bx + x0)) * 4;
+      const idx10 = ((by + y0) * origW + (bx + x1)) * 4;
+      const idx01 = ((by + y1) * origW + (bx + x0)) * 4;
+      const idx11 = ((by + y1) * origW + (bx + x1)) * 4;
+
+      let r = (rawRgba[idx00] * wx0 + rawRgba[idx10] * wx1) * wy0 +
+              (rawRgba[idx01] * wx0 + rawRgba[idx11] * wx1) * wy1;
+      let g = (rawRgba[idx00 + 1] * wx0 + rawRgba[idx10 + 1] * wx1) * wy0 +
+              (rawRgba[idx01 + 1] * wx0 + rawRgba[idx11 + 1] * wx1) * wy1;
+      let b = (rawRgba[idx00 + 2] * wx0 + rawRgba[idx10 + 2] * wx1) * wy0 +
+              (rawRgba[idx01 + 2] * wx0 + rawRgba[idx11 + 2] * wx1) * wy1;
+
+      if (isDarkMode) {
+        r = 255 - r;
+        g = 255 - g;
+        b = 255 - b;
+      }
+
+      const dstIdx = y * tw + x;
+      floatArr[dstIdx] = (r / 255.0 - 0.5) / 0.5;
+      floatArr[area + dstIdx] = (g / 255.0 - 0.5) / 0.5;
+      floatArr[area * 2 + dstIdx] = (b / 255.0 - 0.5) / 0.5;
+    }
+  }
+
+  try {
+    const inputTensor = new ort.Tensor("float32", floatArr, [1, 3, 64, tw]);
+    const inpName = recViSession.inputNames[0];
+    const outMap = await recViSession.run({ [inpName]: inputTensor });
+    const outName = recViSession.outputNames[0];
+    const outTensor = outMap[outName];
+    const logitsData = outTensor.data as Float32Array;
+    const dims = outTensor.dims;
+    const seqLen = dims[1];
+    const numClasses = dims[2] || 230;
+
+    const { text: rawLineText, confidence } = decodeCtcGreedy(logitsData, seqLen, numClasses);
+    if (confidence < 0.40) {
+      return null;
+    }
+    const lineText = cleanVietnameseOcrText(rawLineText);
+    if (!lineText || lineText.trim().length === 0) {
+      return null;
+    }
+
+    const lineWords: OcrWord[] = [];
+    const tokens = lineText.split(/(\s+)/);
+    let charCursor = 0;
+    const totalChars = Math.max(1, lineText.length);
+
+    for (const token of tokens) {
+      const trimmed = token.trim();
+      if (trimmed.length > 0) {
+        const wordX = bx + Math.round((charCursor / totalChars) * bw);
+        const wordW = Math.max(8, Math.round((trimmed.length / totalChars) * bw));
+        lineWords.push({
+          text: trimmed,
+          x: wordX,
+          y: by,
+          w: wordW,
+          h: bh,
+        });
+      }
+      charCursor += token.length;
+    }
+
+    return {
+      text: lineText,
+      x: bx,
+      y: by,
+      w: bw,
+      h: bh,
+      columnId: box.columnId ?? 0,
+      words: lineWords,
+    };
+  } catch (err) {
+    console.warn("[SnapDoc OCR] Nhận diện box VieSVTR lỗi:", err);
+    return null;
+  }
+}
+
+/**
  * Nhận diện chữ bằng mô hình Deep Learning On-Device (PaddleOCR + VieSVTR)
  * Tối ưu hóa hiệu năng: Concurrency Batch = 4, Direct Memory Sampling (Zero Canvas DOM overhead)
  */
-export async function recognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode = "vi"): Promise<OcrResult> {
+export async function recognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode = "auto"): Promise<OcrResult> {
   const prevLock = globalOcrMutex;
   let release: () => void;
   globalOcrMutex = new Promise((resolve) => {
@@ -441,7 +575,7 @@ export async function recognizePaddleOcr(imageUrl: string, langMode: OcrLanguage
   }
 }
 
-async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode = "vi"): Promise<OcrResult> {
+async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode = "auto"): Promise<OcrResult> {
   // 1. Tải ảnh vào Canvas
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
@@ -515,7 +649,115 @@ async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode 
     };
   }
 
-  // 3. Chế độ Tiếng Việt / Tiếng Anh: DBNet + VieSVTR (10/10 Accuracy)
+  // 3. Chế độ Tự Động (Auto): Đa ngôn ngữ (Việt + Nhật + Trung + Anh)
+  // Bước 1: Chạy CJK pipeline để phát hiện và nhận diện CJK + Latin
+  // Bước 2: Với các box chứa chữ Latin/Việt (không có CJK), cắt box và nhận diện bằng VieSVTR để giữ đủ dấu thanh
+  if (langMode === "auto") {
+    const cjkOcr = await getCjkOcrService();
+    const recViSession = await getRecViSession();
+
+    const fullImgData = ctx.getImageData(0, 0, origW, origH);
+    const rawRgba = fullImgData.data;
+    const rgbBytes = rgbaToRgb(rawRgba, origW, origH);
+    const recognitionResults = await cjkOcr.recognize(
+      new PaddleImage(origW, origH, 3, rgbBytes)
+    );
+
+    if (!recognitionResults || recognitionResults.length === 0) {
+      return { text: "", words: [], lines: [] };
+    }
+
+    const recognizedLines: OcrLine[] = [];
+    for (const r of recognitionResults) {
+      const box = {
+        x: r.box.x,
+        y: r.box.y,
+        width: r.box.width,
+        height: r.box.height,
+        columnId: 0,
+      };
+
+      const cjkText = (r.text || "").trim();
+      const isCjk = CJK_REGEX.test(cjkText);
+
+      if (isCjk && cjkText.length > 0) {
+        // Giữ nguyên kết quả CJK
+        const words: OcrWord[] = [{
+          text: cjkText,
+          x: Math.round(box.x),
+          y: Math.round(box.y),
+          w: Math.round(box.width),
+          h: Math.round(box.height),
+        }];
+        recognizedLines.push({
+          text: cjkText,
+          x: Math.round(box.x),
+          y: Math.round(box.y),
+          w: Math.round(box.width),
+          h: Math.round(box.height),
+          columnId: 0,
+          words,
+        });
+      } else {
+        // Dòng chữ Latin / Tiếng Việt: Nhận dạng lại bằng VieSVTR
+        const viLine = await recognizeBoxWithVieVi(box, origW, origH, rawRgba, recViSession);
+        if (viLine && viLine.text.trim().length > 0) {
+          recognizedLines.push(viLine);
+        } else if (cjkText.length > 0) {
+          // Fallback kết quả CJK nếu VieSVTR không tự tin
+          const words: OcrWord[] = [{
+            text: cjkText,
+            x: Math.round(box.x),
+            y: Math.round(box.y),
+            w: Math.round(box.width),
+            h: Math.round(box.height),
+          }];
+          recognizedLines.push({
+            text: cjkText,
+            x: Math.round(box.x),
+            y: Math.round(box.y),
+            w: Math.round(box.width),
+            h: Math.round(box.height),
+            columnId: 0,
+            words,
+          });
+        }
+      }
+    }
+
+    if (recognizedLines.length === 0) {
+      return { text: "", words: [], lines: [] };
+    }
+
+    const sortedLines = sortBoxesColumnAware(
+      recognizedLines.map((l) => ({
+        ...l,
+        width: l.w,
+        height: l.h,
+      })),
+      origW
+    ).map((b) => ({
+      ...b,
+      w: b.width,
+      h: b.height,
+    }));
+
+    const finalLines = mergeAdjacentLinesInSameColumn(sortedLines);
+    const allWords: OcrWord[] = [];
+    for (const l of finalLines) {
+      allWords.push(...l.words);
+    }
+    const fullText = cleanOcrText(finalLines.map((l) => l.text).join("\n"), "auto");
+
+    return {
+      text: fullText,
+      words: allWords,
+      lines: finalLines,
+      engine: "viesvtr",
+    };
+  }
+
+  // 4. Chế độ Tiếng Việt / Tiếng Anh: DBNet + VieSVTR (10/10 Accuracy)
   const detService = await getDetectionService();
   const recViSession = await getRecViSession();
 
@@ -541,134 +783,17 @@ async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode 
     origW
   );
 
-  let lastBoxError: string | null = null;
   const recognizedLinesRaw: (OcrLine | null)[] = new Array(sortedBoxes.length).fill(null);
 
-  // Tuần tự nhận diện từng box để tránh xung đột state trong WASM runtime (tránh lỗi "Session mismatch")
+  // Tuần tự nhận diện từng box bằng hàm dùng chung recognizeBoxWithVieVi
   for (let idx = 0; idx < sortedBoxes.length; idx++) {
-    const box = sortedBoxes[idx];
-    const bx = Math.max(0, Math.round(box.x) - 2);
-    const by = Math.max(0, Math.round(box.y) - 2);
-    const bw = Math.min(origW - bx, Math.round(box.width) + 4);
-    const bh = Math.min(origH - by, Math.round(box.height) + 4);
-
-    if (bw < 8 || bh < 8) continue;
-
-    let tw = Math.ceil(64 * (bw / bh));
-    tw = Math.ceil(tw / 4) * 4;
-    tw = Math.max(32, Math.min(1600, tw));
-
-    const area = 64 * tw;
-    const floatArr = new Float32Array(3 * area);
-
-    // Kiểm tra độ sáng trung bình để xử lý Dark mode
-    let totalLuma = 0;
-    for (let y = 0; y < bh; y += 2) {
-      for (let x = 0; x < bw; x += 2) {
-        const pixelIdx = ((by + y) * origW + (bx + x)) * 4;
-        totalLuma += 0.299 * rawRgba[pixelIdx] + 0.587 * rawRgba[pixelIdx + 1] + 0.114 * rawRgba[pixelIdx + 2];
-      }
-    }
-    const samplePixels = Math.max(1, Math.ceil(bh / 2) * Math.ceil(bw / 2));
-    const isDarkMode = totalLuma / samplePixels < 128;
-
-    // Trích xuất trực tiếp từ rawRgba bằng thuật toán Nội suy Song tuyến tính (Bilinear Interpolation)
-    // Giúp các nét dấu thanh tiếng Việt (hỏi, ngã, sắc, mũ) cực kỳ mịn màng và không bị vỡ hạt răng cưa
-    const yRatio = bh / 64;
-    const xRatio = bw / tw;
-
-    for (let y = 0; y < 64; y++) {
-      const srcYFloat = (y + 0.5) * yRatio - 0.5;
-      const y0 = Math.max(0, Math.min(bh - 1, Math.floor(srcYFloat)));
-      const y1 = Math.max(0, Math.min(bh - 1, y0 + 1));
-      const wy1 = Math.max(0, Math.min(1, srcYFloat - y0));
-      const wy0 = 1.0 - wy1;
-
-      for (let x = 0; x < tw; x++) {
-        const srcXFloat = (x + 0.5) * xRatio - 0.5;
-        const x0 = Math.max(0, Math.min(bw - 1, Math.floor(srcXFloat)));
-        const x1 = Math.max(0, Math.min(bw - 1, x0 + 1));
-        const wx1 = Math.max(0, Math.min(1, srcXFloat - x0));
-        const wx0 = 1.0 - wx1;
-
-        const idx00 = ((by + y0) * origW + (bx + x0)) * 4;
-        const idx10 = ((by + y0) * origW + (bx + x1)) * 4;
-        const idx01 = ((by + y1) * origW + (bx + x0)) * 4;
-        const idx11 = ((by + y1) * origW + (bx + x1)) * 4;
-
-        let r = (rawRgba[idx00] * wx0 + rawRgba[idx10] * wx1) * wy0 +
-                (rawRgba[idx01] * wx0 + rawRgba[idx11] * wx1) * wy1;
-        let g = (rawRgba[idx00 + 1] * wx0 + rawRgba[idx10 + 1] * wx1) * wy0 +
-                (rawRgba[idx01 + 1] * wx0 + rawRgba[idx11 + 1] * wx1) * wy1;
-        let b = (rawRgba[idx00 + 2] * wx0 + rawRgba[idx10 + 2] * wx1) * wy0 +
-                (rawRgba[idx01 + 2] * wx0 + rawRgba[idx11 + 2] * wx1) * wy1;
-
-        if (isDarkMode) {
-          r = 255 - r;
-          g = 255 - g;
-          b = 255 - b;
-        }
-
-        const dstIdx = y * tw + x;
-        floatArr[dstIdx] = (r / 255.0 - 0.5) / 0.5;
-        floatArr[area + dstIdx] = (g / 255.0 - 0.5) / 0.5;
-        floatArr[area * 2 + dstIdx] = (b / 255.0 - 0.5) / 0.5;
-      }
-    }
-
-    try {
-      const inputTensor = new ort.Tensor("float32", floatArr, [1, 3, 64, tw]);
-      const inpName = recViSession.inputNames[0];
-      const outMap = await recViSession.run({ [inpName]: inputTensor });
-      const outName = recViSession.outputNames[0];
-      const outTensor = outMap[outName];
-      const logitsData = outTensor.data as Float32Array;
-      const dims = outTensor.dims;
-      const seqLen = dims[1];
-      const numClasses = dims[2] || 230;
-
-      const { text: rawLineText, confidence } = decodeCtcGreedy(logitsData, seqLen, numClasses);
-      if (confidence < 0.40) {
-        continue; // Bỏ qua box rác có độ tin cậy thấp
-      }
-      let lineText = cleanVietnameseOcrText(rawLineText);
-
-      if (lineText && lineText.trim().length > 0) {
-        const lineWords: OcrWord[] = [];
-        const tokens = lineText.split(/(\s+)/);
-        let charCursor = 0;
-        const totalChars = Math.max(1, lineText.length);
-
-        for (const token of tokens) {
-          const trimmed = token.trim();
-          if (trimmed.length > 0) {
-            const wordX = bx + Math.round((charCursor / totalChars) * bw);
-            const wordW = Math.max(8, Math.round((trimmed.length / totalChars) * bw));
-            lineWords.push({
-              text: trimmed,
-              x: wordX,
-              y: by,
-              w: wordW,
-              h: bh,
-            });
-          }
-          charCursor += token.length;
-        }
-
-        recognizedLinesRaw[idx] = {
-          text: lineText,
-          x: bx,
-          y: by,
-          w: bw,
-          h: bh,
-          columnId: box.columnId ?? 0,
-          words: lineWords,
-        };
-      }
-    } catch (err: any) {
-      console.warn("[SnapDoc OCR] Nhận diện box lỗi:", err);
-      lastBoxError = err?.message || String(err);
-    }
+    recognizedLinesRaw[idx] = await recognizeBoxWithVieVi(
+      sortedBoxes[idx],
+      origW,
+      origH,
+      rawRgba,
+      recViSession
+    );
   }
 
   const validLines = recognizedLinesRaw.filter((l): l is OcrLine => l !== null);
@@ -676,7 +801,6 @@ async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode 
     if (detectedBoxes.length === 0) {
       throw new Error("DBNet không phát hiện được hộp văn bản nào trong ảnh (0 boxes)");
     }
-    if (lastBoxError) throw new Error(`VieSVTR nhận diện box lỗi: ${lastBoxError}`);
     throw new Error("Không có dòng chữ nào đạt ngưỡng độ tin cậy (>35%)");
   }
 

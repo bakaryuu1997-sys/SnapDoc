@@ -8,7 +8,8 @@
  * 3. Tiếng Anh (en): Bảo toàn nguyên vẹn mã nguồn, camelCase, snake_case, đường dẫn file, token API, URLs.
  */
 
-export type OcrLanguageMode = "vi" | "en" | "ja" | "zh" | "all";
+import { type OcrLanguageMode, CJK_REGEX } from "./ocrLanguage";
+export type { OcrLanguageMode };
 
 // --- BẢNG ÁNH XẠ CHUỖI CỤM TỪ TIẾNG VIỆT & LỖI QUANG HỌC CHUNG ---
 const VIETNAMESE_PHRASE_FIXES: [RegExp, string][] = [
@@ -387,7 +388,7 @@ export function cleanEnglishOcrText(text: string): string {
 /**
  * Bộ điều phối làm sạch văn bản OCR thông minh theo ngôn ngữ (Language-Aware OCR Text Cleaner)
  */
-export function cleanOcrText(text: string, langMode: OcrLanguageMode = "vi"): string {
+export function cleanOcrText(text: string, langMode: OcrLanguageMode = "auto"): string {
   if (!text) return "";
 
   if (langMode === "ja") {
@@ -402,28 +403,35 @@ export function cleanOcrText(text: string, langMode: OcrLanguageMode = "vi"): st
     return cleanVietnameseOcrText(text);
   }
 
-  // Với chế độ "all" hoặc "zh": Tự động phát hiện tập ký tự chiếm ưu thế
-  const jaCount = (text.match(/[\u3040-\u309F\u30A0-\u30FF]/gu) || []).length;
-  const cjkCount = (text.match(/[\u4E00-\u9FAF]/gu) || []).length;
-  const viCount = (text.match(/[à-ỹÀ-ỸđĐ]/gu) || []).length;
-
-  if (jaCount >= 2 || (cjkCount >= 3 && viCount === 0)) {
-    return cleanJapaneseOcrText(text);
-  }
-
-  if (viCount > 0) {
-    return cleanVietnameseOcrText(text);
-  }
-
-  return cleanEnglishOcrText(text);
+  // Với chế độ "auto" (hoặc "zh"): chọn bộ làm sạch THEO TỪNG DÒNG
+  const lines = text.split("\n");
+  const cleanedLines = lines.map((line) => {
+    if (!line.trim()) return line;
+    if (CJK_REGEX.test(line)) {
+      return cleanJapaneseOcrText(line);
+    } else if (/[à-ỹÀ-ỸđĐ]/gu.test(line)) {
+      return cleanVietnameseOcrText(line);
+    }
+    return cleanEnglishOcrText(line);
+  });
+  return cleanedLines.join("\n").trim();
 }
 
 /**
  * Làm sạch từng từ đơn lẻ (dùng cho mảng OcrWord trong LiveTextOverlay)
  */
-export function cleanOcrWord(word: string, langMode: OcrLanguageMode = "vi"): string {
+export function cleanOcrWord(word: string, langMode: OcrLanguageMode = "auto"): string {
   if (!word) return "";
-  return cleanOcrText(word, langMode);
+  if (langMode === "ja") return cleanJapaneseOcrText(word);
+  if (langMode === "en") return cleanEnglishOcrText(word);
+  if (langMode === "vi") return cleanVietnameseOcrText(word);
+
+  if (CJK_REGEX.test(word)) {
+    return cleanJapaneseOcrText(word);
+  } else if (/[à-ỹÀ-ỸđĐ]/gu.test(word)) {
+    return cleanVietnameseOcrText(word);
+  }
+  return cleanEnglishOcrText(word);
 }
 
 // Giữ lại alias cũ để tương thích ngược hoàn toàn
