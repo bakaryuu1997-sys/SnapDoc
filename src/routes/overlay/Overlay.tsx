@@ -601,7 +601,9 @@ function RegionSelect() {
             )
             .catch((err) => {
               console.error("[SnapDoc] Text Grab capture/emit failed:", err);
-              ipc.showToast(`⚠️ Không lấy được vùng vừa chọn: ${String(err)}`).catch(() => {});
+              ipc.showToast(
+                t("captureBar.toastCaptureFailed", "⚠️ Không lấy được vùng vừa chọn: {{err}}", { err: String(err) })
+              ).catch(() => {});
             })
             .finally(() => {
               ipc.cancelOverlay().catch(() => {});

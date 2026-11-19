@@ -185,7 +185,12 @@ export default function CaptureBar() {
         if (navigator.clipboard?.writeText) {
           await navigator.clipboard.writeText(text).catch(() => {});
         }
-        await ipc.showToast(`📋 Đã sao chép (${langLabel}): "${preview(text)}"`);
+        await ipc.showToast(
+          t("captureBar.toastCopiedWithLang", '📋 Đã sao chép ({{lang}}): "{{preview}}"', {
+            lang: langLabel,
+            preview: preview(text),
+          })
+        );
       };
 
       // 1. Thử giải mã mã QR trước khi OCR (Task T7)
@@ -204,13 +209,18 @@ export default function CaptureBar() {
         console.warn("[SnapDoc] QR decode failed, fallback to OCR:", err);
       }
 
+      const noTextToast = () =>
+        t("captureBar.toastNoTextFound", "⚠️ Không tìm thấy văn bản trong vùng vừa chọn ({{lang}})", {
+          lang: langLabel,
+        });
+
       try {
         const res = await recognizeImage(dataUrl, targetLang);
         const text = (res?.text || "").trim();
         if (text) {
           await done(text);
         } else {
-          await ipc.showToast(`⚠️ Không tìm thấy văn bản trong vùng vừa chọn (${langLabel})`);
+          await ipc.showToast(noTextToast());
         }
       } catch (err) {
         console.error("[SnapDoc] OCR text-grab failed, fallback to native OCR:", err);
@@ -224,7 +234,7 @@ export default function CaptureBar() {
         } catch (e) {
           console.error("[SnapDoc] Native OCR text-grab fallback failed:", e);
         }
-        await ipc.showToast(`⚠️ Không tìm thấy văn bản trong vùng vừa chọn (${langLabel})`).catch(() => {});
+        await ipc.showToast(noTextToast()).catch(() => {});
       }
     });
 
@@ -232,7 +242,9 @@ export default function CaptureBar() {
     const unlistenTextGrabRedo = listen("snapdoc-redo-text-grab", async () => {
       const lastUrl = lastTextGrabDataUrlRef.current;
       if (!lastUrl) {
-        await ipc.showToast("⚠️ Chưa có lần trích xuất chữ (Text Grab) nào trước đó");
+        await ipc.showToast(
+          t("captureBar.toastNoPreviousTextGrab", "⚠️ Chưa có lần trích xuất chữ (Text Grab) nào trước đó")
+        );
         return;
       }
       await ipc.openEditor().catch(() => {});
