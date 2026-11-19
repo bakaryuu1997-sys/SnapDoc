@@ -143,6 +143,66 @@ pub fn copy_gif_file(_path: &std::path::Path) -> Result<(), String> {
     Err("Nền tảng này chưa hỗ trợ copy file GIF vào clipboard".to_string())
 }
 
+/// Chuyển đổi đường dẫn file thành file:// URL đã được percent-encode chuẩn RFC 3986
+pub fn percent_encode_file_path(path: &std::path::Path) -> String {
+    let abs_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Ok(cur) = std::env::current_dir() {
+        cur.join(path)
+    } else {
+        path.to_path_buf()
+    };
+    let path_str = abs_path.to_string_lossy().replace('\\', "/");
+
+    let mut encoded = String::new();
+    for byte in path_str.as_bytes() {
+        match *byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'/' | b':' | b'~' => {
+                encoded.push(*byte as char);
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+
+    if encoded.starts_with('/') {
+        format!("file://{encoded}")
+    } else {
+        format!("file:///{encoded}")
+    }
+}
+
+/// Tạo chuỗi CF_HTML chuẩn Windows cho danh sách đường dẫn file ảnh
+pub fn build_cf_html_payload(paths: &[std::path::PathBuf]) -> String {
+    let mut img_tags = String::new();
+    for path in paths {
+        let url = percent_encode_file_path(path);
+        img_tags.push_str(&format!(r#"<img src="{url}" /><br />"#));
+    }
+
+    let html_prefix = "<html><body><!--StartFragment-->";
+    let html_suffix = "<!--EndFragment--></body></html>";
+
+    // Header length tính động với số 0 (105 bytes)
+    let dummy_header = format!(
+        "Version:0.9\r\nStartHTML:{:010}\r\nEndHTML:{:010}\r\nStartFragment:{:010}\r\nEndFragment:{:010}\r\n",
+        0, 0, 0, 0
+    );
+    let header_len = dummy_header.len();
+    let start_html = header_len;
+    let start_fragment = start_html + html_prefix.len();
+    let end_fragment = start_fragment + img_tags.len();
+    let end_html = end_fragment + html_suffix.len();
+
+    let header = format!(
+        "Version:0.9\r\nStartHTML:{:010}\r\nEndHTML:{:010}\r\nStartFragment:{:010}\r\nEndFragment:{:010}\r\n",
+        start_html, end_html, start_fragment, end_fragment
+    );
+
+    format!("{header}{html_prefix}{img_tags}{html_suffix}")
+}
+
 /// Copy nhiều ảnh/file vào clipboard hệ thống cùng lúc.
 /// Trên Windows: ghi trong một lần mở clipboard 3 định dạng:
 /// 1. CF_HDROP: danh sách file Unicode (Explorer, Slack, Teams, Telegram, Discord...)
@@ -161,6 +221,10 @@ pub fn copy_images_multi(paths: &[std::path::PathBuf]) -> Result<(), String> {
     };
     use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GHND};
     use windows_sys::Win32::UI::Shell::DROPFILES;
+
+    extern "system" {
+        fn GlobalFree(hmem: windows_sys::Win32::Foundation::HGLOBAL) -> windows_sys::Win32::Foundation::HGLOBAL;
+    }
 
     const CF_DIB: u32 = 8;
     const CF_HDROP: u32 = 15;
@@ -193,6 +257,7 @@ pub fn copy_images_multi(paths: &[std::path::PathBuf]) -> Result<(), String> {
     unsafe {
         let ptr = GlobalLock(h_drop);
         if ptr.is_null() {
+            GlobalFree(h_drop);
             return Err("Không thể khóa bộ nhớ cho CF_HDROP".to_string());
         }
         let df = DROPFILES {
@@ -215,43 +280,7 @@ pub fn copy_images_multi(paths: &[std::path::PathBuf]) -> Result<(), String> {
     let mut h_html: windows_sys::Win32::Foundation::HGLOBAL = std::ptr::null_mut();
 
     if cf_html != 0 {
-        let mut img_tags = String::new();
-        for path in paths {
-            let abs_path = if path.is_absolute() {
-                path.to_path_buf()
-            } else if let Ok(cur) = std::env::current_dir() {
-                cur.join(path)
-            } else {
-                path.to_path_buf()
-            };
-            let path_str = abs_path.to_string_lossy().replace('\\', "/");
-            let url = if path_str.starts_with('/') {
-                format!("file://{path_str}")
-            } else {
-                format!("file:///{path_str}")
-            };
-            img_tags.push_str(&format!(r#"<img src="{url}" /><br />"#));
-        }
-
-        let html_prefix = "<html><body><!--StartFragment-->";
-        let html_suffix = "<!--EndFragment--></body></html>";
-        // Header length là đúng 109 bytes:
-        // Version:0.9\r\n (13)
-        // StartHTML:0000000000\r\n (23)
-        // EndHTML:0000000000\r\n (21)
-        // StartFragment:0000000000\r\n (27)
-        // EndFragment:0000000000\r\n (25)
-        let header_len = 109;
-        let start_html = header_len;
-        let start_fragment = start_html + html_prefix.len();
-        let end_fragment = start_fragment + img_tags.len();
-        let end_html = end_fragment + html_suffix.len();
-
-        let header = format!(
-            "Version:0.9\r\nStartHTML:{:010}\r\nEndHTML:{:010}\r\nStartFragment:{:010}\r\nEndFragment:{:010}\r\n",
-            start_html, end_html, start_fragment, end_fragment
-        );
-        let full_html = format!("{header}{html_prefix}{img_tags}{html_suffix}\0");
+        let full_html = format!("{}\0", build_cf_html_payload(paths));
         let html_bytes = full_html.as_bytes();
 
         let mem = unsafe { GlobalAlloc(GHND, html_bytes.len()) };
@@ -263,6 +292,10 @@ pub fn copy_images_multi(paths: &[std::path::PathBuf]) -> Result<(), String> {
                     GlobalUnlock(mem);
                 }
                 h_html = mem;
+            } else {
+                unsafe {
+                    GlobalFree(mem);
+                }
             }
         }
     }
@@ -307,6 +340,10 @@ pub fn copy_images_multi(paths: &[std::path::PathBuf]) -> Result<(), String> {
                             GlobalUnlock(mem);
                         }
                         h_dib = mem;
+                    } else {
+                        unsafe {
+                            GlobalFree(mem);
+                        }
                     }
                 }
             }
@@ -323,17 +360,39 @@ pub fn copy_images_multi(paths: &[std::path::PathBuf]) -> Result<(), String> {
         std::thread::sleep(std::time::Duration::from_millis(30));
     }
     if !opened {
+        unsafe {
+            if !h_drop.is_null() {
+                GlobalFree(h_drop);
+            }
+            if !h_html.is_null() {
+                GlobalFree(h_html);
+            }
+            if !h_dib.is_null() {
+                GlobalFree(h_dib);
+            }
+        }
         return Err("Không mở được clipboard hệ thống (đang bị ứng dụng khác khóa)".to_string());
     }
 
     unsafe {
         EmptyClipboard();
-        SetClipboardData(CF_HDROP, h_drop as _);
+        if !h_drop.is_null() {
+            let res = SetClipboardData(CF_HDROP, h_drop as _);
+            if res.is_null() {
+                GlobalFree(h_drop);
+            }
+        }
         if !h_html.is_null() && cf_html != 0 {
-            SetClipboardData(cf_html, h_html as _);
+            let res = SetClipboardData(cf_html, h_html as _);
+            if res.is_null() {
+                GlobalFree(h_html);
+            }
         }
         if !h_dib.is_null() {
-            SetClipboardData(CF_DIB, h_dib as _);
+            let res = SetClipboardData(CF_DIB, h_dib as _);
+            if res.is_null() {
+                GlobalFree(h_dib);
+            }
         }
         CloseClipboard();
     }
@@ -361,6 +420,30 @@ mod tests {
     }
 
     #[test]
+    fn test_cf_html_offsets_are_exact() {
+        let p1 = std::path::PathBuf::from(r"C:\Users\asus\Downloads\dự án\snapdoc\img1.png");
+        let p2 = std::path::PathBuf::from(r"C:\Users\asus\マイドライブ\photo.jpg");
+        let html = build_cf_html_payload(&[p1, p2]);
+
+        // Parse StartFragment and EndFragment from header
+        let sf_line = html.lines().find(|l| l.starts_with("StartFragment:")).expect("StartFragment header");
+        let ef_line = html.lines().find(|l| l.starts_with("EndFragment:")).expect("EndFragment header");
+        let start_frag: usize = sf_line["StartFragment:".len()..].trim().parse().expect("parse start_frag");
+        let end_frag: usize = ef_line["EndFragment:".len()..].trim().parse().expect("parse end_frag");
+
+        assert!(start_frag < end_frag);
+        assert!(end_frag <= html.len());
+
+        let fragment = &html[start_frag..end_frag];
+        assert!(fragment.starts_with("<img src="), "Fragment must start with <img src=, got: {}", fragment);
+        assert!(html[end_frag..].starts_with("<!--EndFragment-->"), "Right after end_frag must be <!--EndFragment-->");
+        assert!(fragment.contains("%E1%BB%B1"), "Unicode path must be percent-encoded");
+        assert!(fragment.contains("%20"), "Space must be percent-encoded");
+        assert!(!fragment.contains("dự án"), "Raw unicode must not be in URL");
+    }
+
+    #[test]
+    #[ignore = "ghi đè clipboard thật của người dùng"]
     fn test_copy_images_multi_with_unicode_path() {
         let tmp_dir = std::env::temp_dir().join("snapdoc_test_clipboard_マイドライブ_dự án");
         let _ = std::fs::create_dir_all(&tmp_dir);
