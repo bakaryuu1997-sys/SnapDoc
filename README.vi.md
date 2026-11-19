@@ -80,7 +80,10 @@ Quay vùng / cửa sổ / toàn màn hình, kèm **Micro**, **âm thanh hệ th�
 </p>
 
 ### 🔤 OCR & bảo vệ thông tin riêng tư
-- **OCR tức thì** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>): chọn vùng bất kỳ, chữ vào clipboard — nhận tiếng Việt có dấu, chạy offline.
+- **OCR Tự động thông minh**: Nhận diện kết hợp đa ngôn ngữ (Tiếng Việt có dấu, English, 日本語, 中文) ngay trong cùng một bức ảnh, 100% offline.
+- **Text Grab (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>)**: Đổi nhanh ngôn ngữ bằng phím số <kbd>1</kbd>–<kbd>5</kbd> trên overlay, hoặc từ menu Capture Bar.
+- **Đọc mã QR tức thì**: Tự động nhận diện và sao chép nội dung mã QR trong vùng chọn mà không cần qua OCR.
+- **Đọc lại Text Grab (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>)**: Mở lại ảnh vừa grab trong Editor và tự bật OCR Inspector để tra cứu, đổi ngôn ngữ hoặc chỉnh sửa văn bản.
 - **Live Text**: chữ trên ảnh bôi đen/copy được như văn bản.
 - **Che nhạy cảm tự động**: quét và che mờ **email, token/API key, số điện thoại (VN & Nhật), số thẻ (Luhn), địa chỉ IP, My Number, mã bưu điện 〒** và chuỗi bí mật dạng ngẫu nhiên.
 
@@ -95,8 +98,12 @@ Cắt/chia đoạn, đổi **tốc độ** theo vùng, **Focus** (tự zoom theo
   <img src="docs/screenshots/13-video-editor.png" alt="Trình chỉnh sửa video" width="640">
 </p>
 
-### 🗂️ Thư viện
-Mọi ảnh/video đều được lưu, lọc theo loại/ngày, **Thùng rác** (khôi phục hoặc xoá vĩnh viễn), thao tác hàng loạt, ghim ảnh nổi, **chia sẻ qua Google Drive** của chính bạn.
+### 🗂️ Thư viện & Quản lý tập tin
+Mọi ảnh/video đều được lưu, lọc theo loại/ngày, **Thùng rác** (khôi phục hoặc xoá vĩnh viễn), ghim ảnh nổi, **chia sẻ qua Google Drive** của chính bạn.
+- **Sao chép nhiều ảnh (<kbd>Ctrl</kbd>+<kbd>C</kbd>)**: Chọn nhiều mục trong Thư viện, bấm Ctrl+C để dán đồng thời nhiều file/ảnh vào Windows Explorer, Word, Outlook, Slack, Teams, Discord, Zalo...
+- **Nối ảnh & Copy**: Ghép nhiều ảnh dài kèm nút "Ghép & Copy" dán thẳng vào ứng dụng khác.
+- **Định dạng lưu linh hoạt & Nén tối ưu**: Tùy chọn lưu định dạng PNG (lossless), JPG (tùy chỉnh chất lượng 50–100%), hoặc WebP.
+- **Công cụ nén lại ảnh cũ**: Nén lại toàn bộ ảnh PNG trong thư mục lưu và thư viện mà không làm mất chất lượng (pixel nguyên vẹn 100%, bảo toàn thời gian sửa file `mtime`).
 
 <p align="center">
   <img src="docs/screenshots/08-library.png" alt="Thư viện" width="640">
@@ -155,6 +162,7 @@ Phím tắt **toàn cục** (đổi được ở *Cài đặt › Phím tắt*):
 | Chụp nhanh (chú thích tại chỗ) | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> |
 | Chụp & copy nhanh | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> |
 | Trích chữ (OCR) vào clipboard | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> |
+| Đọc lại Text Grab bằng OCR Inspector | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> |
 | Bảng lệnh | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
 
 **Trong Editor ảnh:** <kbd>V</kbd> chọn · <kbd>R</kbd> khung · <kbd>E</kbd> khung số · <kbd>O</kbd> tròn · <kbd>A</kbd> mũi tên · <kbd>W</kbd> mũi tên số · <kbd>D</kbd> mũi tên 2 chiều · <kbd>L</kbd> đường · <kbd>T</kbd> chữ · <kbd>N</kbd> đánh số · <kbd>H</kbd> tô sáng · <kbd>B</kbd> che mờ · <kbd>C</kbd> cắt · <kbd>G</kbd> khung nền · <kbd>K</kbd> khung code · <kbd>Esc</kbd> thoát.

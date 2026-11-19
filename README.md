@@ -48,9 +48,9 @@ The **Options ▾** menu sets what happens after a capture, the audio source for
 - **📸 Capture** — region, window, full screen, all screens, **scrolling capture**, **quick capture** (annotate in place), capture & copy; timer; post-capture thumbnail (Edit / Copy / Save / **Pin**).
 - **🎬 Record** — region/window/full screen with microphone, system audio or both; keystroke & click overlays; **Webcam Bubble**.
 - **🖍️ Edit images** — 15+ tools (numbered boxes/arrows, text with callouts, step numbers, highlight, **blur / pixelate / solid**, crop, syntax-highlighted code block), **backgrounds & 1-click Beautify**, stitch long images, flatten.
-- **🔤 OCR & privacy** — instant OCR to clipboard (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>, Vietnamese-aware, offline), **Live Text**, and **auto-redact** of emails, API keys/tokens, phone numbers (VN & JP), credit cards (Luhn), IPs, My Number, 〒 postcodes and random secrets.
+- **🔤 OCR & privacy** — Smart Auto OCR (seamlessly recognizing Vietnamese diacritics, English, Japanese Kanji/Kana, and Chinese in the same image, 100% offline), instant Text Grab (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>) with quick language switching (<kbd>1</kbd>–<kbd>5</kbd> on overlay or from Capture Bar menu), **instant QR code decoding**, redo Text Grab with OCR Inspector (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>), **Live Text**, and **auto-redact** of emails, API keys/tokens, phone numbers (VN & JP), credit cards (Luhn), IPs, My Number, 〒 postcodes and random secrets.
 - **✂️ Edit video** — cut/split, per-region **speed**, **Focus** (auto-zoom on the mouse), smooth cursor, click ripple, timed annotations, crop, remove audio, **GIF export**.
-- **🗂️ Library** — filter, Trash with restore, batch actions, pinning, **Google Drive** sharing with your own account.
+- **🗂️ Library & Files** — **multi-image copy (<kbd>Ctrl</kbd>+<kbd>C</kbd>)** to paste multiple files/images into Explorer, Word, Outlook, Slack, Teams, Discord...; Stitch & Copy; customizable save formats (lossless PNG, compressed JPG with quality slider, WebP); in-app **lossless PNG recompression tool** preserving file modification time (`mtime`); filter, Trash with restore, batch actions, pinning, **Google Drive** sharing.
 
 <p align="center">
   <img src="docs/screenshots/04-editor-redact.png" alt="Auto-redact sensitive data" width="420">
@@ -95,6 +95,7 @@ Safety layers: **(1)** off by default, loopback-only, bearer token, rejects any 
 | Full screen / region / window / all screens | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> / <kbd>4</kbd> |
 | Capture bar · Scrolling capture · Record | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>5</kbd> · <kbd>6</kbd> · <kbd>7</kbd> |
 | Quick capture · Capture & copy · OCR to clipboard | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> · <kbd>C</kbd> · <kbd>T</kbd> |
+| Redo Text Grab with OCR Inspector | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> |
 | Command palette | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
 
 Editor tools: <kbd>V</kbd> select · <kbd>R</kbd> box · <kbd>E</kbd> numbered box · <kbd>O</kbd> ellipse · <kbd>A</kbd> arrow · <kbd>W</kbd> numbered arrow · <kbd>D</kbd> double arrow · <kbd>L</kbd> line · <kbd>T</kbd> text · <kbd>N</kbd> step · <kbd>H</kbd> highlight · <kbd>B</kbd> blur · <kbd>C</kbd> crop · <kbd>G</kbd> background · <kbd>K</kbd> code · <kbd>Esc</kbd> exit. Video: <kbd>Q</kbd>/<kbd>W</kbd> trim start/end · <kbd>Ctrl</kbd>+<kbd>B</kbd> split · <kbd>Delete</kbd> remove segment.
