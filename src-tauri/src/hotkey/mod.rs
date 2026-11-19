@@ -117,13 +117,17 @@ fn run_action(app: &AppHandle, action: &str) {
             let _ = app.emit("snapdoc-redo-text-grab", ());
         }
         "textGrabJa" => {
-            use tauri::Emitter;
+            use tauri::{Emitter, Manager};
+            let config_dir = app.path().app_config_dir().unwrap_or_default();
+            let _ = crate::storage::settings::patch(&config_dir, &serde_json::json!({ "ocrLanguage": "ja" }));
             let _ = app.emit("snapdoc-ocr-lang-changed", serde_json::json!({ "lang": "ja" }));
             let app = app.clone();
             std::thread::spawn(move || flow::start_text_grab(&app));
         }
         "textGrabVi" => {
-            use tauri::Emitter;
+            use tauri::{Emitter, Manager};
+            let config_dir = app.path().app_config_dir().unwrap_or_default();
+            let _ = crate::storage::settings::patch(&config_dir, &serde_json::json!({ "ocrLanguage": "vi" }));
             let _ = app.emit("snapdoc-ocr-lang-changed", serde_json::json!({ "lang": "vi" }));
             let app = app.clone();
             std::thread::spawn(move || flow::start_text_grab(&app));

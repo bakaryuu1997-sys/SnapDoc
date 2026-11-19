@@ -236,9 +236,15 @@ export default function CaptureBar() {
         return;
       }
       await ipc.openEditor().catch(() => {});
-      setTimeout(() => {
-        emit("open-image-ocr", { dataUrl: lastUrl }).catch(() => {});
-      }, 250);
+      // Gửi ngay cho trường hợp Editor đã mở sẵn
+      emit("open-image-ocr", { dataUrl: lastUrl }).catch(() => {});
+    });
+
+    // Lắng nghe khi Editor báo sẵn sàng (lần đầu mount hoặc phục hồi)
+    const unlistenEditorReq = listen("request-text-grab-redo-data", () => {
+      if (lastTextGrabDataUrlRef.current) {
+        emit("open-image-ocr", { dataUrl: lastTextGrabDataUrlRef.current }).catch(() => {});
+      }
     });
 
     const onKey = (e: KeyboardEvent) => {
@@ -273,6 +279,7 @@ export default function CaptureBar() {
       window.removeEventListener("keydown", onKey);
       unlistenTextGrab.then((fn) => fn());
       unlistenTextGrabRedo.then((fn) => fn());
+      unlistenEditorReq.then((fn) => fn());
       unlistenRecordMode.then((fn) => fn());
       unlistenSettings.then((fn) => fn());
     };

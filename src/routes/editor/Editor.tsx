@@ -1,6 +1,6 @@
 import CommandPalette from "../../components/CommandPalette";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useTranslation, Trans } from "react-i18next";
@@ -559,6 +559,7 @@ export default function Editor() {
     };
 
     void loadAnyPending();
+    emit("request-text-grab-redo-data").catch(() => {});
     requestAnimationFrame(() => {
       window.focus();
     });

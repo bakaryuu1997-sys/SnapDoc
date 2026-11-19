@@ -10,7 +10,7 @@ import { PRESET_COLORS, type Tool } from "../../features/annotation/model";
 import { quickToolFromKey } from "../../lib/toolShortcuts";
 import QuickToolbar, { quickToolbarLayout } from "../quick-capture/QuickToolbar";
 import { serializeDoc } from "../../features/annotation/sessions";
-import { type OcrLanguageMode, getSavedOcrLang, saveOcrLang } from "../../lib/ocrLanguage";
+import { type OcrLanguageMode, getSavedOcrLang, saveOcrLang, normalizeOcrLang, setCachedOcrLang } from "../../lib/ocrLanguage";
 
 /**
  * Lấy ảnh "đóng băng màn hình" từ Rust (JPEG base64) khi mount overlay.
@@ -43,6 +43,7 @@ interface OverlaySession {
   gen: number;
   record: boolean;
   preset: Sel | null;
+  ocrLang?: string;
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -418,6 +419,15 @@ function RegionSelect() {
   useEffect(() => {
     textGrabLangRef.current = textGrabLang;
   }, [textGrabLang]);
+
+  useEffect(() => {
+    if (session.ocrLang) {
+      const mode = normalizeOcrLang(session.ocrLang);
+      setTextGrabLang(mode);
+      textGrabLangRef.current = mode;
+      setCachedOcrLang(mode);
+    }
+  }, [session.ocrLang]);
 
   useEffect(() => {
     const unlistenLang = listen<{ lang: OcrLanguageMode }>("snapdoc-ocr-lang-changed", (event) => {

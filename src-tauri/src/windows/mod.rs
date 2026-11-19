@@ -1998,6 +1998,7 @@ fn reveal_ready_overlays(
 /// (`commands::get_overlay_session`) — event Tauri không được buffer, trang
 /// prewarm chưa kịp đăng ký listener sẽ mất event và kẹt ở gen=0.
 fn overlay_session_payloads(
+    app: &AppHandle,
     mode: &str,
     record: bool,
     preset: Option<&crate::flow::LastRecordRegion>,
@@ -2005,6 +2006,10 @@ fn overlay_session_payloads(
     snaps: &[MonitorSnap],
     gen: u64,
 ) -> Vec<serde_json::Value> {
+    let config_dir = app.path().app_config_dir().unwrap_or_default();
+    let s = crate::storage::settings::load(&config_dir);
+    let ocr_lang = s.get("ocrLanguage").and_then(|v| v.as_str()).unwrap_or("auto");
+
     snaps
         .iter()
         .enumerate()
@@ -2022,6 +2027,7 @@ fn overlay_session_payloads(
                 "gen": gen,
                 "record": record,
                 "preset": preset_json,
+                "ocrLang": ocr_lang,
             })
         })
         .collect()
@@ -2258,7 +2264,7 @@ fn try_reuse_prewarmed_overlays(
 
     // Lưu session TRƯỚC khi emit: trang nào chưa kịp nghe event sẽ tự kéo về
     // lúc mount (xem `overlay_session_payloads`).
-    let payloads = overlay_session_payloads(mode, record, preset, matched_idx, snaps, gen);
+    let payloads = overlay_session_payloads(app, mode, record, preset, matched_idx, snaps, gen);
     store_overlay_session(app, &payloads);
 
     for (i, (snap, win)) in snaps.iter().zip(wins.iter()).enumerate() {
@@ -2452,7 +2458,7 @@ pub fn open_overlays_ex(
             close_overlays_no_prewarm(app);
             // Sau close (close xoá session) — trang mới đọc session từ query
             // string, lưu thêm để đồng nhất với nhánh reuse.
-            let payloads = overlay_session_payloads(mode, record, preset.as_ref(), matched_preset_idx, &snaps, gen);
+            let payloads = overlay_session_payloads(app, mode, record, preset.as_ref(), matched_preset_idx, &snaps, gen);
             store_overlay_session(app, &payloads);
             let mut wins = Vec::with_capacity(snaps.len());
             for (i, snap) in snaps.iter().enumerate() {

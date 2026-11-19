@@ -72,5 +72,24 @@ export function saveOcrLang(mode: OcrLanguageMode) {
 }
 
 export function setCachedOcrLang(mode: string | null | undefined) {
-  cachedSettingsLang = normalizeOcrLang(mode);
+  const norm = normalizeOcrLang(mode);
+  cachedSettingsLang = norm;
+  try {
+    localStorage.setItem("snapdoc_ocr_lang", norm);
+  } catch {}
+}
+
+export async function initOcrLanguage(): Promise<OcrLanguageMode> {
+  try {
+    const s = await ipc.getSettings();
+    if (s && typeof s.ocrLanguage === "string") {
+      const mode = normalizeOcrLang(s.ocrLanguage);
+      setCachedOcrLang(mode);
+      return mode;
+    }
+  } catch {}
+
+  const local = getSavedOcrLang();
+  saveOcrLang(local);
+  return local;
 }
