@@ -5,6 +5,7 @@ import { ipc, type CaptureMode, type OutputMode } from "../../lib/ipc";
 import { showError } from "../../lib/notify";
 import { recognizeImage } from "../../lib/ocrService";
 import { type OcrLanguageMode, getSavedOcrLang } from "../../lib/ocrLanguage";
+import { decodeQrFromDataUrl } from "../../lib/qrService";
 import { useFileDrop } from "../../lib/useFileDrop";
 
 type RecordMode = "full" | "window" | "region";
@@ -187,6 +188,23 @@ export default function CaptureBar() {
         }
         await ipc.showToast(`📋 Đã sao chép (${langLabel}): "${preview(text)}"`);
       };
+
+      // 1. Thử giải mã mã QR trước khi OCR (Task T7)
+      try {
+        const qrContent = await decodeQrFromDataUrl(dataUrl);
+        if (qrContent && qrContent.trim()) {
+          const trimmed = qrContent.trim();
+          await ipc.copyText(trimmed);
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(trimmed).catch(() => {});
+          }
+          await ipc.showToast(`🔗 Đã đọc mã QR: "${preview(trimmed)}"`);
+          return;
+        }
+      } catch (err) {
+        console.warn("[SnapDoc] QR decode failed, fallback to OCR:", err);
+      }
+
       try {
         const res = await recognizeImage(dataUrl, targetLang);
         const text = (res?.text || "").trim();
