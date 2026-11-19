@@ -945,10 +945,68 @@ fn copy_history_item_sync(app: &AppHandle, id: &str) -> Result<(), String> {
     if rec.media_type == "video" {
         return Err("Video chưa hỗ trợ copy vào clipboard".to_string());
     }
+    // Ưu tiên copy đa định dạng (CF_HDROP + CF_HTML + CF_DIB)
+    if let Ok(_) = copy_history_items_sync(app, &[id.to_string()]) {
+        return Ok(());
+    }
     // `preview.png` — bản ĐÃ ghép annotation, tức đúng cái user thấy. Copy nền
     // sạch ra clipboard sẽ là mất annotation một cách im lặng.
     let bytes = load_asset_preview(&rec)?;
     crate::clipboard::copy_png_bytes(&bytes)
+}
+
+pub(crate) fn copy_history_items_sync(app: &AppHandle, ids: &[String]) -> Result<usize, String> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let temp_dir = std::env::temp_dir().join("snapdoc_clipboard");
+    let _ = std::fs::create_dir_all(&temp_dir);
+
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+
+    for id in ids {
+        if let Ok(rec) = get_history_item_sync(app, id) {
+            if rec.media_type == "video" {
+                if let Some(ref exp) = rec.exported_path {
+                    let p = std::path::PathBuf::from(exp);
+                    if p.exists() {
+                        paths.push(p);
+                        continue;
+                    }
+                }
+                let p = std::path::PathBuf::from(&rec.asset_path);
+                if p.exists() {
+                    paths.push(p);
+                }
+            } else {
+                // Image
+                let mut used_file = false;
+                if let Some(ref exp) = rec.exported_path {
+                    let p = std::path::PathBuf::from(exp);
+                    if p.exists() {
+                        paths.push(p);
+                        used_file = true;
+                    }
+                }
+                if !used_file {
+                    if let Ok(bytes) = load_asset_preview(&rec) {
+                        let tmp_file = temp_dir.join(format!("{}.png", rec.id));
+                        if std::fs::write(&tmp_file, &bytes).is_ok() {
+                            paths.push(tmp_file);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if paths.is_empty() {
+        return Err("Không có file ảnh/video nào hợp lệ để copy".to_string());
+    }
+
+    let count = paths.len();
+    crate::clipboard::copy_images_multi(&paths)?;
+    Ok(count)
 }
 
 /// Ưu tiên bản Save/Save As gần nhất (`exported_path`) nếu còn tồn tại trên
@@ -1295,6 +1353,14 @@ pub async fn overwrite_history_video(
 #[tauri::command]
 pub async fn copy_history_item(app: AppHandle, id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || copy_history_item_sync(&app, &id))
+        .await
+        .map_err(|e| format!("Task join error: {e}"))?
+}
+
+/// Copy nhiều item History vào clipboard cùng lúc (CF_HDROP + CF_HTML + CF_DIB)
+#[tauri::command]
+pub async fn copy_history_items(app: AppHandle, ids: Vec<String>) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || copy_history_items_sync(&app, &ids))
         .await
         .map_err(|e| format!("Task join error: {e}"))?
 }

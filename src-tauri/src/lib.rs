@@ -277,6 +277,7 @@ pub fn run() {
             history::commands::trim_history_video,
             history::commands::overwrite_history_video,
             history::commands::copy_history_item,
+            history::commands::copy_history_items,
             history::commands::reveal_history_item,
             history::commands::set_history_exported_path,
             history::commands::open_history,

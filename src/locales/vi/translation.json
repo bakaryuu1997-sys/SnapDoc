@@ -352,6 +352,10 @@
     "filterEmptyDesc": "Không có ảnh hoặc video nào khớp với bộ lọc đã chọn.",
     "clearFilterBtn": "Xóa bộ lọc",
     "deletedToast": "Đã chuyển {{count}} ảnh vào Thùng rác",
+    "copiedSingleToast": "📋 Đã sao chép ảnh vào clipboard",
+    "copiedMultiToast": "📋 Đã chép {{count}} ảnh, dán (Ctrl+V) vào Explorer, Word, Slack…",
+    "copySelected": "Copy ({{count}})",
+    "copySelectedTooltip": "Sao chép các mục đã chọn vào clipboard (CF_HDROP, HTML, DIB)",
     "undo": "Hoàn tác",
     "pin": "Ghim",
     "pinTooltip": "Ghim ảnh nổi trên các cửa sổ khác"
@@ -554,6 +558,8 @@
     "cancel": "Huỷ",
     "stitching": "Đang nối…",
     "stitch": "Nối ảnh",
+    "stitchAndCopy": "Ghép & Copy",
+    "copiedToast": "📋 Đã ghép và sao chép ảnh vào clipboard",
     "cannotReadFile": "Không đọc được file dán",
     "openImageError": "Lỗi mở ảnh: {{error}}",
     "imageCount": "{{count}} ảnh"

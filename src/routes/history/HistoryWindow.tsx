@@ -89,6 +89,27 @@ export default function HistoryWindow() {
       if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
         st.selectAll();
+      } else if (mod && e.key.toLowerCase() === "c") {
+        if (ids.length === 0 || busyRef.current) return;
+        e.preventDefault();
+        busyRef.current = true;
+        try {
+          if (ids.length === 1) {
+            await ipc.copyHistoryItem(ids[0]);
+            const msg = t("history.copiedSingleToast");
+            st.showToast(msg);
+            ipc.showToast(msg).catch(() => {});
+          } else {
+            const count = await ipc.copyHistoryItems(ids);
+            const msg = t("history.copiedMultiToast", { count });
+            st.showToast(msg);
+            ipc.showToast(msg).catch(() => {});
+          }
+        } catch (err) {
+          showError(err);
+        } finally {
+          busyRef.current = false;
+        }
       } else if (e.key === "Escape") {
         if (ids.length > 0) st.clearSelection();
       } else if (e.key === "Enter" && !mod) {
@@ -146,12 +167,14 @@ export default function HistoryWindow() {
       {toast && toast.visible && (
         <div style={toastContainer}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 16 }}>🗑️</span>
+            <span style={{ fontSize: 16 }}>{toast.ids && toast.ids.length > 0 ? "🗑️" : "📋"}</span>
             <span style={{ fontSize: 13, color: "#f2f2f5", fontWeight: 500 }}>{toast.message}</span>
           </div>
-          <button style={undoBtn} onClick={handleUndo}>
-            ↺ {t("history.undo")}
-          </button>
+          {toast.ids && toast.ids.length > 0 && (
+            <button style={undoBtn} onClick={handleUndo}>
+              ↺ {t("history.undo")}
+            </button>
+          )}
           <button style={toastCloseBtn} onClick={hideToast} title="Close">
             ✕
           </button>

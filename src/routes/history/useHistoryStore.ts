@@ -41,7 +41,7 @@ interface HistoryState {
    * `reload()`/`setFilter()` kế tiếp. */
   addItem: (item: HistoryItem) => void;
   toast: { visible: boolean; message: string; ids: string[] } | null;
-  showToast: (message: string, ids: string[]) => void;
+  showToast: (message: string, ids?: string[]) => void;
   hideToast: () => void;
 }
 
@@ -63,7 +63,7 @@ export const useHistory = create<HistoryState>((set, get) => ({
   generation: 0,
   viewMode: "grid",
   toast: null,
-  showToast: (message, ids) => set({ toast: { visible: true, message, ids } }),
+  showToast: (message, ids = []) => set({ toast: { visible: true, message, ids } }),
   hideToast: () => set({ toast: null }),
 
   setViewMode: (mode) => set({ viewMode: mode }),

@@ -352,6 +352,10 @@
     "filterEmptyDesc": "No captures match the selected filters.",
     "clearFilterBtn": "Clear Filters",
     "deletedToast": "Moved {{count}} item(s) to Trash",
+    "copiedSingleToast": "📋 Image copied to clipboard",
+    "copiedMultiToast": "📋 Copied {{count}} images, paste (Ctrl+V) into Explorer, Word, Slack…",
+    "copySelected": "Copy ({{count}})",
+    "copySelectedTooltip": "Copy selected items to clipboard (CF_HDROP, HTML, DIB)",
     "undo": "Undo",
     "pin": "Pin",
     "pinTooltip": "Pin floating image always-on-top"
@@ -554,6 +558,8 @@
     "cancel": "Cancel",
     "stitching": "Stitching…",
     "stitch": "Stitch images",
+    "stitchAndCopy": "Stitch & Copy",
+    "copiedToast": "📋 Stitched and copied to clipboard",
     "cannotReadFile": "Cannot read pasted file",
     "openImageError": "Error opening image: {{error}}",
     "imageCount": "{{count}} images"

@@ -168,6 +168,37 @@ export default function StitchDialog({ initialImage, onApply, onCancel }: Props)
     }
   };
 
+  const applyAndCopy = async () => {
+    if (items.length < 2) {
+      setError(t("stitch.minImages"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const last = lastPreviewRef.current;
+      const result =
+        last &&
+        last.items === items &&
+        last.direction === direction &&
+        last.align === align &&
+        last.gap === gap &&
+        last.background === background
+          ? last.result
+          : await composeStitch(
+              items.map((i) => i.src),
+              { direction, align, gap, background },
+              imgCacheRef.current,
+            );
+      await ipc.copyImage(result.dataUrl);
+      const msg = t("stitchDialog.copiedToast");
+      ipc.showToast(msg).catch(() => {});
+      onCancel();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  };
+
   const vertical = direction === "vertical";
   const alignLabels: Record<StitchAlign, string> = vertical
     ? { start: t("stitchDialog.left"), center: t("stitchDialog.center"), end: t("stitchDialog.right") }
@@ -269,6 +300,9 @@ export default function StitchDialog({ initialImage, onApply, onCancel }: Props)
 
         <div style={actions}>
           <button style={cancelBtn} onClick={onCancel}>{t("stitchDialog.cancel")}</button>
+          <button style={secondaryActionBtn} onClick={applyAndCopy} disabled={busy || items.length < 2}>
+            📋 {t("stitchDialog.stitchAndCopy")}
+          </button>
           <button style={applyBtn} onClick={apply} disabled={busy || items.length < 2}>
             {busy ? t("stitchDialog.stitching") : t("stitchDialog.stitch")}
           </button>
@@ -378,6 +412,10 @@ const actions: React.CSSProperties = {
 const cancelBtn: React.CSSProperties = {
   padding: "7px 18px", borderRadius: 7, border: "1px solid var(--border, rgba(255,255,255,0.12))",
   background: "transparent", color: "var(--text-dim, #94a3b8)", fontSize: 13, cursor: "pointer",
+};
+const secondaryActionBtn: React.CSSProperties = {
+  padding: "7px 18px", borderRadius: 7, border: "1px solid var(--accent, #3b82f6)",
+  background: "rgba(59, 130, 246, 0.15)", color: "var(--accent, #93c5fd)", fontSize: 13, fontWeight: 600, cursor: "pointer",
 };
 const applyBtn: React.CSSProperties = {
   padding: "7px 20px", borderRadius: 7, border: "none",

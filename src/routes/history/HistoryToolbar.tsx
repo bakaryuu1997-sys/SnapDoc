@@ -30,7 +30,12 @@ export default function HistoryToolbar() {
   const reload = useHistory((s) => s.reload);
   const viewMode = useHistory((s) => s.viewMode);
   const setViewMode = useHistory((s) => s.setViewMode);
+  const selectedIds = useHistory((s) => s.selectedIds);
+  const selectedId = useHistory((s) => s.selectedId);
+  const showToast = useHistory((s) => s.showToast);
   const [emptying, setEmptying] = useState(false);
+
+  const activeIds = selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : [];
 
   // Khoảng ngày nhanh — tính tại thời điểm bấm (không cache) để không bị lệch
   // ngày khi cửa sổ mở qua nửa đêm. `to` là mốc loại trừ (hết ngày hôm nay).
@@ -119,6 +124,25 @@ export default function HistoryToolbar() {
       />
 
       <div style={{ flex: 1 }} />
+
+      {activeIds.length > 1 && (
+        <button
+          style={copyBtn}
+          title={t("history.copySelectedTooltip")}
+          onClick={async () => {
+            try {
+              const count = await ipc.copyHistoryItems(activeIds);
+              const msg = t("history.copiedMultiToast", { count });
+              showToast(msg);
+              ipc.showToast(msg).catch(() => {});
+            } catch (err) {
+              alert(String(err));
+            }
+          }}
+        >
+          📋 {t("history.copySelected", { count: activeIds.length })}
+        </button>
+      )}
 
       <div style={viewSwitch}>
         <button
@@ -215,4 +239,18 @@ const dangerBtn: React.CSSProperties = {
   background: "rgba(239,68,68,0.15)",
   color: "#fca5a5",
   fontSize: 13,
+};
+
+const copyBtn: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "6px 12px",
+  borderRadius: 6,
+  background: "var(--accent, #3b82f6)",
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: 500,
+  border: "none",
+  cursor: "pointer",
 };

@@ -634,6 +634,7 @@ export const ipc = {
    * động lại app (phiên trong RAM đã mất nhưng nháp trên đĩa còn). */
   listItemsWithDraft: () => invoke<string[]>("list_items_with_draft"),
   copyHistoryItem: (id: string) => invoke<void>("copy_history_item", { id }),
+  copyHistoryItems: (ids: string[]) => invoke<number>("copy_history_items", { ids }),
   revealHistoryItem: (id: string) => invoke<void>("reveal_history_item", { id }),
   /** Ghi lại đường dẫn bản Save/Save As gần nhất ra thư mục tuỳ chọn — gọi
    * ngay sau khi export ảnh/video thành công, để lần sau "Xem file trong Thư
