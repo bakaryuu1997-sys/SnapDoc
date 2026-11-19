@@ -48,13 +48,32 @@ pub fn run_recompress(app: &AppHandle) -> Result<RecompressResult, String> {
     // 2. Tìm thư mục Library assets
     let library_assets = crate::history::assets::assets_dir(app).ok();
 
-    // 3. Đường dẫn file đang active trong Editor (nếu có thì bỏ qua)
-    let active_path: Option<String> = {
+    // 3. Thông tin file đang active trong Editor (nếu có thì bỏ qua)
+    let (active_path, active_history_id): (Option<String>, Option<String>) = {
         let state = app.state::<crate::AppState>();
-        state.pending.lock().ok().and_then(|g| g.as_ref().and_then(|p| p.file_path.clone()))
+        let g = state.pending.lock().ok();
+        let path = g.as_ref().and_then(|p| p.as_ref().and_then(|x| x.file_path.clone()));
+        let id = g.as_ref().and_then(|p| p.as_ref().and_then(|x| x.history_id.clone()));
+        (path, id)
     };
 
-    // Thu thập danh sách file PNG cần xử lý
+    let is_active = |p: &std::path::Path| -> bool {
+        if let Some(ref act) = active_path {
+            if p.to_string_lossy() == *act {
+                return true;
+            }
+        }
+        if let Some(ref act_id) = active_history_id {
+            if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                if stem == act_id {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+
+    // Thu thập danh sách file PNG và .snapdoc cần xử lý
     let mut files_to_scan: Vec<PathBuf> = Vec::new();
 
     // Quét saveDir (không đệ quy)
@@ -64,12 +83,9 @@ pub fn run_recompress(app: &AppHandle) -> Result<RecompressResult, String> {
                 let p = entry.path();
                 if p.is_file() {
                     if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                        if ext.eq_ignore_ascii_case("png") {
-                            if let Some(ref act) = active_path {
-                                if p.to_string_lossy() == *act {
-                                    continue;
-                                }
-                            }
+                        if (ext.eq_ignore_ascii_case("png") || ext.eq_ignore_ascii_case("snapdoc"))
+                            && !is_active(&p)
+                        {
                             files_to_scan.push(p);
                         }
                     }
@@ -86,7 +102,9 @@ pub fn run_recompress(app: &AppHandle) -> Result<RecompressResult, String> {
                     let p = entry.path();
                     if p.is_file() {
                         if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                            if ext.eq_ignore_ascii_case("png") {
+                            if (ext.eq_ignore_ascii_case("png") || ext.eq_ignore_ascii_case("snapdoc"))
+                                && !is_active(&p)
+                            {
                                 files_to_scan.push(p);
                             }
                         }
@@ -127,7 +145,14 @@ pub fn run_recompress(app: &AppHandle) -> Result<RecompressResult, String> {
             },
         );
 
-        if let Ok((saved, changed)) = recompress_single_png(path) {
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let recompress_res = if ext.eq_ignore_ascii_case("snapdoc") {
+            recompress_single_snapdoc(path)
+        } else {
+            recompress_single_png(path)
+        };
+
+        if let Ok((saved, changed)) = recompress_res {
             if changed {
                 compressed_count += 1;
                 saved_bytes += saved;
@@ -143,6 +168,34 @@ pub fn run_recompress(app: &AppHandle) -> Result<RecompressResult, String> {
     })
 }
 
+/// Nén lại dữ liệu PNG nếu nén được nhỏ hơn và bảo đảm pixel giống hệt 100%.
+/// Chỉ áp dụng cho PNG 8-bit (bỏ qua PNG 16-bit để tránh mất độ sâu màu).
+pub fn recompress_png_checked(old_bytes: &[u8]) -> Option<Vec<u8>> {
+    let old_img = image::load_from_memory(old_bytes).ok()?;
+    match old_img.color() {
+        image::ColorType::Rgb8
+        | image::ColorType::Rgba8
+        | image::ColorType::L8
+        | image::ColorType::La8 => {}
+        _ => return None, // Bỏ qua ảnh 16-bit hoặc format khác
+    }
+    let old_rgba = old_img.to_rgba8();
+
+    let new_bytes = crate::capture::recompress_png(old_bytes);
+    if new_bytes.len() >= old_bytes.len() {
+        return None;
+    }
+
+    let new_img = image::load_from_memory(&new_bytes).ok()?;
+    let new_rgba = new_img.to_rgba8();
+
+    if old_rgba.dimensions() != new_rgba.dimensions() || old_rgba.as_raw() != new_rgba.as_raw() {
+        return None;
+    }
+
+    Some(new_bytes)
+}
+
 /// Nén lại 1 file PNG cụ thể nếu có thể nén nhỏ hơn mà pixel giống hệt 100%.
 /// Giữ nguyên mtime. Trả về (bytes_tiết_kiệm, đã_nén_thành_công).
 pub fn recompress_single_png(path: &std::path::Path) -> Result<(u64, bool), String> {
@@ -150,23 +203,9 @@ pub fn recompress_single_png(path: &std::path::Path) -> Result<(u64, bool), Stri
     let mtime = metadata.modified().map_err(|e| e.to_string())?;
     let old_bytes = std::fs::read(path).map_err(|e| e.to_string())?;
 
-    let new_bytes = crate::capture::recompress_png(&old_bytes);
-    if new_bytes.len() >= old_bytes.len() {
+    let Some(new_bytes) = recompress_png_checked(&old_bytes) else {
         return Ok((0, false));
-    }
-
-    // Decode cả 2 để so pixel từng vị trí
-    let old_img = image::load_from_memory(&old_bytes)
-        .map_err(|e| e.to_string())?
-        .to_rgba8();
-    let new_img = image::load_from_memory(&new_bytes)
-        .map_err(|e| e.to_string())?
-        .to_rgba8();
-
-    if old_img.dimensions() != new_img.dimensions() || old_img.as_raw() != new_img.as_raw() {
-        // Sai khác pixel — huỷ bỏ để đảm bảo an toàn tuyệt đối
-        return Ok((0, false));
-    }
+    };
 
     // Ghi atomic qua file tạm cùng thư mục
     let parent = path.parent().unwrap_or(std::path::Path::new("."));
@@ -188,6 +227,53 @@ pub fn recompress_single_png(path: &std::path::Path) -> Result<(u64, bool), Stri
 
     let saved = (old_bytes.len() - new_bytes.len()) as u64;
     Ok((saved, true))
+}
+
+/// Nén lại file `.snapdoc` (container chứa base.png và preview.png) nếu có thể nén nhỏ hơn.
+/// Bảo toàn doc_json, draft_json, created_at, updated_at và mtime.
+pub fn recompress_single_snapdoc(path: &std::path::Path) -> Result<(u64, bool), String> {
+    let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    let mtime = metadata.modified().map_err(|e| e.to_string())?;
+    let old_len = metadata.len();
+
+    let full = crate::snapdoc_file::with_path_lock(path, || {
+        crate::snapdoc_file::read_snapdoc_full(path)
+    })?;
+
+    let new_base = recompress_png_checked(&full.base_png);
+    let new_preview = full.preview_png.as_deref().and_then(recompress_png_checked);
+
+    if new_base.is_none() && new_preview.is_none() {
+        return Ok((0, false));
+    }
+
+    let base_bytes = new_base.as_deref().unwrap_or(&full.base_png);
+    let preview_fallback = full.preview_png.as_deref().unwrap_or(base_bytes);
+    let preview_bytes = new_preview.as_deref().unwrap_or(preview_fallback);
+
+    let write_data = crate::snapdoc_file::WriteSnapdoc {
+        base_png: base_bytes,
+        doc_json: &full.doc_json,
+        draft_json: full.draft_json.as_deref(),
+        preview_png: preview_bytes,
+        created_at: full.created_at,
+        updated_at: full.updated_at,
+    };
+
+    crate::snapdoc_file::with_path_lock(path, || {
+        crate::snapdoc_file::write_snapdoc(path, write_data)
+    })?;
+
+    // Giữ nguyên mtime
+    let ft = filetime::FileTime::from_system_time(mtime);
+    let _ = filetime::set_file_mtime(path, ft);
+
+    let new_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(old_len);
+    if new_len < old_len {
+        Ok((old_len - new_len, true))
+    } else {
+        Ok((0, false))
+    }
 }
 
 #[cfg(test)]
@@ -238,6 +324,81 @@ mod tests {
         let reloaded = image::open(&test_file).unwrap().to_rgba8();
         assert_eq!(img.dimensions(), reloaded.dimensions());
         assert_eq!(img.as_raw(), reloaded.as_raw());
+
+        // Dọn dẹp
+        let _ = std::fs::remove_file(&test_file);
+        let _ = std::fs::remove_dir(&tmp_dir);
+    }
+
+    #[test]
+    fn test_recompress_single_snapdoc_preserves_content_and_mtime() {
+        let tmp_dir = std::env::temp_dir().join(format!("snapdoc_recompress_snapdoc_test_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let test_file = tmp_dir.join("sample.snapdoc");
+
+        let mut img = RgbaImage::new(80, 80);
+        for x in 0..80 {
+            for y in 0..80 {
+                img.put_pixel(x, y, Rgba([x as u8, y as u8, 200, 255]));
+            }
+        }
+
+        // Tạo dữ liệu PNG mã hóa Fast (kích thước lớn)
+        let fast_bytes = crate::capture::encode_png(&img).unwrap();
+
+        let doc_json = r#"{"version":1,"shapes":[{"type":"arrow"}]}"#;
+        let draft_json = r#"{"version":1,"shapes":[{"type":"arrow"},{"type":"text"}]}"#;
+        let created_at = 1700000000000i64;
+        let updated_at = 1700000050000i64;
+
+        let write_data = crate::snapdoc_file::WriteSnapdoc {
+            base_png: &fast_bytes,
+            doc_json,
+            draft_json: Some(draft_json),
+            preview_png: &fast_bytes,
+            created_at,
+            updated_at,
+        };
+
+        crate::snapdoc_file::write_snapdoc(&test_file, write_data).expect("write initial snapdoc");
+
+        // Đặt mtime cố định
+        let past_time = std::time::SystemTime::now() - std::time::Duration::from_secs(2000);
+        let past_ft = filetime::FileTime::from_system_time(past_time);
+        filetime::set_file_mtime(&test_file, past_ft).unwrap();
+
+        let initial_size = std::fs::metadata(&test_file).unwrap().len();
+
+        // Chạy nén snapdoc
+        let (saved, changed) = recompress_single_snapdoc(&test_file).expect("recompress snapdoc");
+        assert!(changed, "File .snapdoc phải nén thành công");
+        assert!(saved > 0, "Dung lượng tiết kiệm phải > 0");
+
+        let new_size = std::fs::metadata(&test_file).unwrap().len();
+        assert_eq!(new_size, initial_size - saved);
+
+        // Kiểm tra mtime giữ nguyên
+        let new_mtime = std::fs::metadata(&test_file).unwrap().modified().unwrap();
+        let diff = new_mtime
+            .duration_since(past_time)
+            .unwrap_or_else(|_| past_time.duration_since(new_mtime).unwrap());
+        assert!(diff.as_secs() <= 2, "mtime .snapdoc phải được giữ nguyên");
+
+        // Đọc lại để kiểm tra bảo toàn nội dung
+        let read_back = crate::snapdoc_file::read_snapdoc_full(&test_file).expect("read_snapdoc_full");
+        assert_eq!(read_back.doc_json, doc_json);
+        assert_eq!(read_back.draft_json.as_deref(), Some(draft_json));
+        assert_eq!(read_back.created_at, created_at);
+        assert_eq!(read_back.updated_at, updated_at);
+
+        // So pixel base_png và preview_png
+        let base_img = image::load_from_memory(&read_back.base_png).unwrap().to_rgba8();
+        assert_eq!(base_img.dimensions(), img.dimensions());
+        assert_eq!(base_img.as_raw(), img.as_raw());
+
+        let prev_img = image::load_from_memory(&read_back.preview_png.unwrap()).unwrap().to_rgba8();
+        assert_eq!(prev_img.dimensions(), img.dimensions());
+        assert_eq!(prev_img.as_raw(), img.as_raw());
 
         // Dọn dẹp
         let _ = std::fs::remove_file(&test_file);

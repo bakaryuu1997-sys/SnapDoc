@@ -181,6 +181,52 @@ pub fn read_snapdoc(path: &Path) -> Result<SnapdocFile, String> {
     })
 }
 
+pub struct SnapdocFullFile {
+    pub base_png: Vec<u8>,
+    pub preview_png: Option<Vec<u8>>,
+    pub doc_json: String,
+    pub draft_json: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+pub fn read_snapdoc_full(path: &Path) -> Result<SnapdocFullFile, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("Không mở được file: {e}"))?;
+    let mut zip =
+        zip::ZipArchive::new(file).map_err(|e| format!("File .snapdoc không hợp lệ: {e}"))?;
+
+    let manifest_raw = read_entry(&mut zip, MANIFEST)?
+        .ok_or_else(|| "File .snapdoc thiếu manifest.json".to_string())?;
+    let manifest: Manifest = serde_json::from_slice(&manifest_raw)
+        .map_err(|e| format!("manifest.json không đọc được: {e}"))?;
+
+    if manifest.format_version > FORMAT_VERSION {
+        return Err(format!(
+            "File được tạo bởi bản SnapDoc mới hơn (định dạng v{}, bản này hỗ trợ tới v{}). \
+             Hãy cập nhật SnapDoc để mở file này.",
+            manifest.format_version, FORMAT_VERSION
+        ));
+    }
+
+    let base_png = read_entry(&mut zip, BASE_PNG)?
+        .ok_or_else(|| "File .snapdoc thiếu base.png".to_string())?;
+    let preview_png = read_entry(&mut zip, PREVIEW_PNG)?;
+    let doc_json = read_entry(&mut zip, DOC_JSON)?
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_else(|| "{}".to_string());
+    let draft_json =
+        read_entry(&mut zip, DRAFT_JSON)?.map(|b| String::from_utf8_lossy(&b).into_owned());
+
+    Ok(SnapdocFullFile {
+        base_png,
+        preview_png,
+        doc_json,
+        draft_json,
+        created_at: manifest.created_at,
+        updated_at: manifest.updated_at,
+    })
+}
+
 /// Có bản nháp chưa lưu hay không — **chỉ đọc central directory của ZIP**,
 /// không giải nén entry nào.
 ///
