@@ -945,12 +945,9 @@ fn copy_history_item_sync(app: &AppHandle, id: &str) -> Result<(), String> {
     if rec.media_type == "video" {
         return Err("Video chưa hỗ trợ copy vào clipboard".to_string());
     }
-    // Ưu tiên copy đa định dạng (CF_HDROP + CF_HTML + CF_DIB)
-    if let Ok(_) = copy_history_items_sync(app, &[id.to_string()]) {
-        return Ok(());
-    }
     // `preview.png` — bản ĐÃ ghép annotation, tức đúng cái user thấy. Copy nền
-    // sạch ra clipboard sẽ là mất annotation một cách im lặng.
+    // sạch ra clipboard sẽ là mất annotation một cách im lặng. Dùng copy_png_bytes
+    // (arboard) để cung cấp đủ định dạng PNG/DIBV5.
     let bytes = load_asset_preview(&rec)?;
     crate::clipboard::copy_png_bytes(&bytes)
 }
@@ -963,8 +960,9 @@ pub(crate) fn copy_history_items_sync(app: &AppHandle, ids: &[String]) -> Result
     let _ = std::fs::create_dir_all(&temp_dir);
 
     let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    let base_name = crate::flow::stamp_filename("Screenshot");
 
-    for id in ids {
+    for (idx, id) in ids.iter().enumerate() {
         if let Ok(rec) = get_history_item_sync(app, id) {
             if rec.media_type == "video" {
                 if let Some(ref exp) = rec.exported_path {
@@ -979,21 +977,16 @@ pub(crate) fn copy_history_items_sync(app: &AppHandle, ids: &[String]) -> Result
                     paths.push(p);
                 }
             } else {
-                // Image
-                let mut used_file = false;
-                if let Some(ref exp) = rec.exported_path {
-                    let p = std::path::PathBuf::from(exp);
-                    if p.exists() {
-                        paths.push(p);
-                        used_file = true;
-                    }
-                }
-                if !used_file {
-                    if let Ok(bytes) = load_asset_preview(&rec) {
-                        let tmp_file = temp_dir.join(format!("{}.png", rec.id));
-                        if std::fs::write(&tmp_file, &bytes).is_ok() {
-                            paths.push(tmp_file);
-                        }
+                // Với ảnh: LUÔN dùng load_asset_preview để lấy đầy đủ annotation vẽ sau trong Editor
+                if let Ok(bytes) = load_asset_preview(&rec) {
+                    let filename = if ids.len() == 1 {
+                        format!("{base_name}.png")
+                    } else {
+                        format!("{base_name}_{:03}.png", idx + 1)
+                    };
+                    let tmp_file = temp_dir.join(filename);
+                    if std::fs::write(&tmp_file, &bytes).is_ok() {
+                        paths.push(tmp_file);
                     }
                 }
             }

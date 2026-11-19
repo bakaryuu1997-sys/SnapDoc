@@ -301,6 +301,12 @@ pub fn run() {
             let handle = app.handle().clone();
             telemetry::app_started(&handle);
 
+            // Dọn dẹp thư mục tạm clipboard từ các phiên làm việc trước
+            let temp_clipboard = std::env::temp_dir().join("snapdoc_clipboard");
+            if temp_clipboard.exists() {
+                let _ = std::fs::remove_dir_all(&temp_clipboard);
+            }
+
             // Mọi `emit("snapdoc-error", ...)` (Rust lẫn webview) → hộp thoại
             // native. Trước đây CaptureBar `alert()` — không hiện gì trên macOS.
             notify::install_error_bridge(&handle);
