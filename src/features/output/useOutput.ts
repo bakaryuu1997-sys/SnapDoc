@@ -45,10 +45,29 @@ export function dirnameOf(path: string): string {
  * Mở dialog lưu file với đường dẫn mặc định cụ thể.
  * Dùng chung cho Save As ở editor và các flow muốn đổi cả thư mục lẫn tên file.
  */
-export async function promptSavePath(defaultPath: string): Promise<string | null> {
+export async function promptSavePath(defaultPath: string, format = "png"): Promise<string | null> {
+  const fmt = format.toLowerCase();
+  const filters = fmt === "jpg" || fmt === "jpeg"
+    ? [
+        { name: "JPEG", extensions: ["jpg", "jpeg"] },
+        { name: "PNG", extensions: ["png"] },
+        { name: "WebP", extensions: ["webp"] },
+      ]
+    : fmt === "webp"
+    ? [
+        { name: "WebP", extensions: ["webp"] },
+        { name: "PNG", extensions: ["png"] },
+        { name: "JPEG", extensions: ["jpg", "jpeg"] },
+      ]
+    : [
+        { name: "PNG", extensions: ["png"] },
+        { name: "JPEG", extensions: ["jpg", "jpeg"] },
+        { name: "WebP", extensions: ["webp"] },
+      ];
+
   return await save({
     defaultPath,
-    filters: [{ name: "PNG", extensions: ["png"] }],
+    filters,
   });
 }
 
@@ -77,7 +96,9 @@ export async function promptSaveGifPath(defaultPath: string): Promise<string | n
 export async function saveToFileAuto(dataUrl: string, alsoCopy = false): Promise<string | null> {
   const settings = await ipc.getSettings().catch(() => null);
   const dir = settings?.saveDir || (await ipc.defaultSaveDir());
-  const path = `${dir}/${stampName()}.png`;
+  const fmt = (settings?.format || "png").toLowerCase();
+  const ext = fmt === "jpg" ? "jpg" : fmt === "webp" ? "webp" : "png";
+  const path = `${dir}/${stampName()}.${ext}`;
   const data = await ensureDataUrl(dataUrl);
   return alsoCopy
     ? await ipc.saveAndCopy(path, data)
@@ -91,7 +112,9 @@ export async function saveToFileAuto(dataUrl: string, alsoCopy = false): Promise
 export async function saveToFile(dataUrl: string, alsoCopy = false): Promise<string | null> {
   const settings = await ipc.getSettings().catch(() => null);
   const dir = settings?.saveDir || (await ipc.defaultSaveDir());
-  const path = await promptSavePath(dir ? `${dir}/${stampName()}.png` : `${stampName()}.png`);
+  const fmt = (settings?.format || "png").toLowerCase();
+  const ext = fmt === "jpg" ? "jpg" : fmt === "webp" ? "webp" : "png";
+  const path = await promptSavePath(dir ? `${dir}/${stampName()}.${ext}` : `${stampName()}.${ext}`, fmt);
   if (!path) return null;
   const data = await ensureDataUrl(dataUrl);
   return alsoCopy ? await ipc.saveAndCopy(path, data) : await ipc.saveImage(path, data);
@@ -106,7 +129,9 @@ export async function saveToFile(dataUrl: string, alsoCopy = false): Promise<str
 export async function saveAsToFile(dataUrl: string): Promise<string | null> {
   const settings = await ipc.getSettings().catch(() => null);
   const dir = settings?.lastImageSaveAsDir || settings?.saveDir || (await ipc.defaultSaveDir());
-  const path = await promptSavePath(dir ? `${dir}/${stampName()}.png` : `${stampName()}.png`);
+  const fmt = (settings?.format || "png").toLowerCase();
+  const ext = fmt === "jpg" ? "jpg" : fmt === "webp" ? "webp" : "png";
+  const path = await promptSavePath(dir ? `${dir}/${stampName()}.${ext}` : `${stampName()}.${ext}`, fmt);
   if (!path) return null;
   // Ghi MỘT key (backend gộp vào bản mới nhất) — không ghi đè cả object bằng bản chụp cũ.
   ipc.patchSettings({ lastImageSaveAsDir: dirnameOf(path) }).catch(() => {});

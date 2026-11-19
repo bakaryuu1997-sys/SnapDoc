@@ -221,6 +221,39 @@ pub fn persist_scroll(img: &RgbaImage) -> Result<Capture, String> {
     })
 }
 
+/// Encode WebP lossless từ RgbaImage
+pub fn encode_webp(img: &RgbaImage) -> Result<Vec<u8>, String> {
+    let mut buf = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut buf, image::ImageFormat::WebP)
+        .map_err(|e| format!("Lỗi mã hoá WebP: {e}"))?;
+    Ok(buf.into_inner())
+}
+
+/// Chuyển đổi định dạng ảnh lưu dựa trên cấu hình người dùng: "png" | "jpg" | "webp".
+/// Trả về (bytes đã mã hóa, đuôi file tương ứng).
+pub fn encode_formatted(bytes: &[u8], format: &str, quality: u8) -> Result<(Vec<u8>, &'static str), String> {
+    match format.to_lowercase().as_str() {
+        "jpg" | "jpeg" => {
+            let img = image::load_from_memory(bytes)
+                .map_err(|e| format!("Không đọc được ảnh để chuyển đổi sang JPG: {e}"))?
+                .to_rgba8();
+            let encoded = encode_jpeg(&img, quality)?;
+            Ok((encoded, "jpg"))
+        }
+        "webp" => {
+            let img = image::load_from_memory(bytes)
+                .map_err(|e| format!("Không đọc được ảnh để chuyển đổi sang WebP: {e}"))?
+                .to_rgba8();
+            let encoded = encode_webp(&img)?;
+            Ok((encoded, "webp"))
+        }
+        _ => {
+            let encoded = recompress_png(bytes);
+            Ok((encoded, "png"))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +354,33 @@ mod tests {
                 name, fast_mb, compact_mb, pct, elapsed
             );
         }
+    }
+
+    #[test]
+    fn test_encode_formatted_png_jpg_webp() {
+        let mut img = RgbaImage::new(50, 50);
+        for x in 0..50 {
+            for y in 0..50 {
+                img.put_pixel(x, y, Rgba([x as u8 * 4, y as u8 * 4, 128, 255]));
+            }
+        }
+        let png_raw = encode_png(&img).unwrap();
+
+        // 1. Format PNG
+        let (png_out, ext_png) = encode_formatted(&png_raw, "png", 90).unwrap();
+        assert_eq!(ext_png, "png");
+        assert_eq!(&png_out[0..4], &[0x89, 0x50, 0x4E, 0x47]);
+
+        // 2. Format JPG
+        let (jpg_out, ext_jpg) = encode_formatted(&png_raw, "jpg", 85).unwrap();
+        assert_eq!(ext_jpg, "jpg");
+        assert_eq!(&jpg_out[0..2], &[0xFF, 0xD8]);
+
+        // 3. Format WebP
+        let (webp_out, ext_webp) = encode_formatted(&png_raw, "webp", 90).unwrap();
+        assert_eq!(ext_webp, "webp");
+        assert_eq!(&webp_out[0..4], b"RIFF");
+        assert_eq!(&webp_out[8..12], b"WEBP");
     }
 }
 

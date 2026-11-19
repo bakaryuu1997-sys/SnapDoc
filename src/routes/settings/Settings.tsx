@@ -355,6 +355,38 @@ export default function Settings() {
                   <button style={smallBtn} onClick={pickDir}>{t("settings.chooseDir")}</button>
                 </div>
               </Field>
+              <Field label={t("settings.imageFormat")}>
+                <select
+                  value={s.format ?? "png"}
+                  onChange={(e) => update({ format: e.target.value as "png" | "jpg" | "webp" })}
+                >
+                  <option value="png">PNG ({t("settings.formatPngLossless")})</option>
+                  <option value="jpg">JPG ({t("settings.formatJpgCompressed")})</option>
+                  <option value="webp">WebP ({t("settings.formatWebpLossless")})</option>
+                </select>
+              </Field>
+
+              {s.format === "jpg" && (
+                <Field label={t("settings.jpgQuality")}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <input
+                      type="range"
+                      min={50}
+                      max={100}
+                      value={s.jpgQuality ?? 90}
+                      onChange={(e) => update({ jpgQuality: Number(e.target.value) }, { debounce: true })}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ minWidth: 36, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      {s.jpgQuality ?? 90}%
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>
+                    {t("settings.jpgQualityHint")}
+                  </div>
+                </Field>
+              )}
+
               <Field label={t("settings.defaultBehavior")}>
                 <select
                   value={s.defaultOutput}

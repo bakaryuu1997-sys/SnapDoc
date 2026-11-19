@@ -57,8 +57,16 @@ fn write_png_to(target: PathBuf, data: &str) -> Result<String, String> {
     let bytes = STANDARD
         .decode(b64.trim())
         .map_err(|e| format!("Base64 không hợp lệ: {e}"))?;
-    let compressed = crate::capture::recompress_png(&bytes);
-    write_bytes_to(target, &compressed)
+    let ext = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+    let (bytes_to_write, _) = match crate::capture::encode_formatted(&bytes, &ext, 90) {
+        Ok(res) => res,
+        Err(_) => (crate::capture::recompress_png(&bytes), "png"),
+    };
+    write_bytes_to(target, &bytes_to_write)
 }
 
 fn write_bytes_to(target: PathBuf, bytes: &[u8]) -> Result<String, String> {

@@ -653,9 +653,14 @@ pub fn finish(
         }
         "save" | "save_copy" => {
             let save_dir = resolve_save_dir(app);
-            let path = format!("{save_dir}/{}.png", stamp_filename("Screenshot"));
-            let compressed = capture::recompress_png(&cap.bytes);
-            let saved = storage::save::write_bytes(&path, &compressed)?;
+            let config_dir = app.path().app_config_dir().unwrap_or_default();
+            let s = storage::settings::load(&config_dir);
+            let fmt = s.get("format").and_then(|v| v.as_str()).unwrap_or("png");
+            let q = s.get("jpgQuality").and_then(|v| v.as_u64()).unwrap_or(90) as u8;
+
+            let (encoded_bytes, ext) = capture::encode_formatted(&cap.bytes, fmt, q)?;
+            let path = format!("{save_dir}/{}.{ext}", stamp_filename("Screenshot"));
+            let saved = storage::save::write_bytes(&path, &encoded_bytes)?;
             if output == "save_copy" {
                 clipboard::copy_png_bytes(&cap.bytes)?;
             }
@@ -701,14 +706,16 @@ pub fn finish(
 /// BẠI nghĩa là chính hành động user vừa chọn thất bại, phải báo lỗi rõ ràng.
 fn auto_export_copy(app: &AppHandle, cap: &capture::Capture, history_id: Option<&str>) {
     let save_dir = resolve_save_dir(app);
-    let is_jpeg = cap.bytes.starts_with(&[0xFF, 0xD8]);
-    let ext = if is_jpeg { "jpg" } else { "png" };
-    let path = format!("{save_dir}/{}.{ext}", stamp_filename("Screenshot"));
-    let bytes_to_write = if is_jpeg {
-        cap.bytes.clone()
-    } else {
-        capture::recompress_png(&cap.bytes)
+    let config_dir = app.path().app_config_dir().unwrap_or_default();
+    let s = storage::settings::load(&config_dir);
+    let fmt = s.get("format").and_then(|v| v.as_str()).unwrap_or("png");
+    let q = s.get("jpgQuality").and_then(|v| v.as_u64()).unwrap_or(90) as u8;
+
+    let (bytes_to_write, ext) = match capture::encode_formatted(&cap.bytes, fmt, q) {
+        Ok(res) => res,
+        Err(_) => (capture::recompress_png(&cap.bytes), "png"),
     };
+    let path = format!("{save_dir}/{}.{ext}", stamp_filename("Screenshot"));
     match storage::save::write_bytes(&path, &bytes_to_write) {
         Ok(saved) => {
             if let Some(id) = history_id {

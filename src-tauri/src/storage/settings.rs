@@ -53,6 +53,11 @@ pub fn validate(v: &Value) -> Result<(), String> {
     if !one_of("ocrLanguage", &["auto", "vi", "en", "ja", "zh"]) {
         return Err("`ocrLanguage` phải là auto/vi/en/ja/zh".into());
     }
+    if let Some(q) = obj.get("jpgQuality") {
+        if !q.as_u64().map(|n| (50..=100).contains(&n)).unwrap_or(false) {
+            return Err("`jpgQuality` phải là số 50–100".into());
+        }
+    }
     if !one_of("defaultOutput", &["editor", "clipboard", "save", "save_copy", "copy_editor"]) {
         return Err("`defaultOutput` không hợp lệ".into());
     }
@@ -127,6 +132,7 @@ fn defaults() -> Value {
     json!({
         "saveDir": "",
         "format": "png",
+        "jpgQuality": 90,
         "defaultOutput": "editor",
         "openEditorAfterCapture": true,
         "timerSeconds": 0,
