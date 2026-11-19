@@ -1649,3 +1649,17 @@ pub fn show_toast(app: tauri::AppHandle, message: String) -> Result<(), String> 
     crate::notify::show_toast(&app, &message);
     Ok(())
 }
+
+/// Bắt đầu nén lại toàn bộ ảnh PNG đã lưu (saveDir + Library) không mất chất lượng
+#[tauri::command]
+pub async fn start_recompress_library(app: AppHandle) -> Result<storage::recompress::RecompressResult, String> {
+    tauri::async_runtime::spawn_blocking(move || storage::recompress::run_recompress(&app))
+        .await
+        .map_err(|e| format!("Task join error: {e}"))?
+}
+
+/// Huỷ quá trình nén lại ảnh
+#[tauri::command]
+pub fn cancel_recompress_library() {
+    storage::recompress::cancel();
+}

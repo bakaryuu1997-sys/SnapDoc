@@ -3,7 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ipc, type Settings as S, type UpdateInfo } from "../../lib/ipc";
+import {
+  ipc,
+  type Settings as S,
+  type UpdateInfo,
+  type RecompressProgress,
+  type RecompressResult,
+} from "../../lib/ipc";
 
 export default function Settings() {
   const { t, i18n } = useTranslation();
@@ -18,6 +24,36 @@ export default function Settings() {
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "installing" | "err">("idle");
   const [updateErr, setUpdateErr] = useState<string | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
+  const [recompressing, setRecompressing] = useState(false);
+  const [recompressProgress, setRecompressProgress] = useState<RecompressProgress | null>(null);
+  const [recompressResult, setRecompressResult] = useState<RecompressResult | null>(null);
+
+  useEffect(() => {
+    const unlisten = listen<RecompressProgress>("snapdoc:recompress-progress", (e) => {
+      setRecompressProgress(e.payload);
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
+  const handleStartRecompress = async () => {
+    setRecompressing(true);
+    setRecompressProgress(null);
+    setRecompressResult(null);
+    try {
+      const res = await ipc.startRecompressLibrary();
+      setRecompressResult(res);
+    } catch (err) {
+      alert(String(err));
+    } finally {
+      setRecompressing(false);
+    }
+  };
+
+  const handleCancelRecompress = async () => {
+    await ipc.cancelRecompressLibrary();
+  };
   const [activeTab, setActiveTab] = useState<"general" | "shortcuts" | "recording" | "permissions" | "cloud" | "agent">(() => {
     try {
       const p = new URLSearchParams(window.location.search).get("tab");
@@ -395,6 +431,74 @@ export default function Settings() {
                   {OUTPUTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
               </Field>
+            </Card>
+
+            {/* STORAGE & OPTIMIZATION (T6) */}
+            <Card title={t("settings.storageSection")}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: 13, color: "var(--text)" }}>
+                  {t("settings.recompressDesc")}
+                </div>
+
+                {!recompressing ? (
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <button style={smallBtn} onClick={handleStartRecompress}>
+                      🗜️ {t("settings.recompressBtn")}
+                    </button>
+                    {recompressResult && (
+                      <span style={{ fontSize: 12, color: "var(--accent)" }}>
+                        {t("settings.recompressResult", {
+                          count: recompressResult.compressedCount,
+                          mb: (recompressResult.savedBytes / (1024 * 1024)).toFixed(2),
+                        })}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-dim)" }}>
+                      <span>
+                        {recompressProgress
+                          ? t("settings.recompressProgress", {
+                              current: recompressProgress.current,
+                              total: recompressProgress.total,
+                              file: recompressProgress.currentFile,
+                            })
+                          : t("settings.recompressScanning")}
+                      </span>
+                      <span>
+                        {recompressProgress && recompressProgress.total > 0
+                          ? `${Math.round((recompressProgress.current / recompressProgress.total) * 100)}%`
+                          : "0%"}
+                      </span>
+                    </div>
+
+                    <div style={{ width: "100%", height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden" }}>
+                      <div
+                        style={{
+                          width: `${recompressProgress && recompressProgress.total > 0 ? (recompressProgress.current / recompressProgress.total) * 100 : 0}%`,
+                          height: "100%",
+                          background: "var(--accent, #3b82f6)",
+                          transition: "width 0.2s ease",
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                      <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                        {recompressProgress && recompressProgress.savedBytes > 0
+                          ? t("settings.recompressSavedSoFar", {
+                              mb: (recompressProgress.savedBytes / (1024 * 1024)).toFixed(2),
+                            })
+                          : ""}
+                      </span>
+                      <button style={smallBtn} onClick={handleCancelRecompress}>
+                        {t("settings.recompressCancelBtn")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </Card>
 
             {/* STARTUP */}

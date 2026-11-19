@@ -744,7 +744,24 @@ export const ipc = {
       gifPath,
       durationMs: Math.round(durationMs),
     }),
+  startRecompressLibrary: () => invoke<RecompressResult>("start_recompress_library"),
+  cancelRecompressLibrary: () => invoke<void>("cancel_recompress_library"),
 };
+
+export interface RecompressProgress {
+  current: number;
+  total: number;
+  compressedCount: number;
+  savedBytes: number;
+  currentFile: string;
+}
+
+export interface RecompressResult {
+  totalScanned: number;
+  compressedCount: number;
+  savedBytes: number;
+  cancelled: boolean;
+}
 
 
 export type KeepRange = [number, number] | [number, number, number];

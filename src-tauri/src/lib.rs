@@ -205,6 +205,8 @@ pub fn run() {
             commands::run_ocr,
             commands::copy_text,
             commands::show_toast,
+            commands::start_recompress_library,
+            commands::cancel_recompress_library,
             commands::get_pinned_image,
             commands::close_self,
             commands::set_always_on_top,

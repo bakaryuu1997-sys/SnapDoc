@@ -5063,6 +5063,7 @@ dependencies = [
  "core-foundation-sys",
  "cpal",
  "dispatch2",
+ "filetime",
  "image",
  "objc2",
  "objc2-app-kit",

@@ -37,6 +37,7 @@ serde_json = "1"
 xcap = { version = "0.9" }
 # Image encode/decode + crop
 image = "0.25"
+filetime = "0.2"
 # Robust cross-platform image clipboard (arboard handles RGBA -> native formats)
 arboard = "3"
 
