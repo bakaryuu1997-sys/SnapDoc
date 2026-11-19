@@ -640,7 +640,12 @@ pub fn finish(
     match output {
         "clipboard" => {
             clipboard::copy_png_bytes(&cap.bytes)?;
-            auto_export_copy(app, &cap, ingested_id.as_deref());
+            let app_clone = app.clone();
+            let cap_clone = cap.clone();
+            let ingested_id_clone = ingested_id.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                auto_export_copy(&app_clone, &cap_clone, ingested_id_clone.as_deref());
+            });
             // Nhánh này mở THUMBNAIL, không mở editor — nên phải tự hiện lại
             // editor nếu vừa ẩn nó lúc nó đang hiển thị.
             windows::show_editor_if_hidden_for_capture(app);
@@ -648,7 +653,12 @@ pub fn finish(
         }
         "copy_editor" => {
             clipboard::copy_png_bytes(&cap.bytes)?;
-            auto_export_copy(app, &cap, ingested_id.as_deref());
+            let app_clone = app.clone();
+            let cap_clone = cap.clone();
+            let ingested_id_clone = ingested_id.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                auto_export_copy(&app_clone, &cap_clone, ingested_id_clone.as_deref());
+            });
             windows::open_editor(app)
         }
         "save" | "save_copy" => {
