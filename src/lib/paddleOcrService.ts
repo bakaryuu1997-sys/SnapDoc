@@ -602,8 +602,8 @@ async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode 
   if (!ctx) throw new Error("Không thể tạo 2D Context");
   ctx.drawImage(img, 0, 0);
 
-  // 2. Chế độ Tiếng Nhật / Tiếng Trung: Dùng PaddleOcrService CJK
-  if (langMode === "ja" || langMode === "zh") {
+  // 2. Chế độ Tiếng Nhật: Dùng PaddleOcrService CJK
+  if (langMode === "ja") {
     const cjkOcr = await getCjkOcrService();
     const imgData = ctx.getImageData(0, 0, origW, origH);
     const rgbBytes = rgbaToRgb(imgData.data, origW, origH);

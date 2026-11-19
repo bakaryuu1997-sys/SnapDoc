@@ -250,7 +250,7 @@ export interface Settings {
   /** Thư mục lần cuối user chọn qua "Lưu file (.gif)" ở GifExportModal — dùng làm
    * mặc định cho lần kế tiếp. */
   lastGifSaveAsDir?: string;
-  /** Ngôn ngữ OCR mặc định: "auto" | "vi" | "en" | "ja" | "zh" — mặc định "auto" */
+  /** Ngôn ngữ OCR mặc định: "auto" | "vi" | "en" | "ja" — mặc định "auto" */
   ocrLanguage?: string;
   /** Chất lượng JPEG khi lưu file (50-100) — mặc định 90 */
   jpgQuality?: number;

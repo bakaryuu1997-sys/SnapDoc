@@ -254,7 +254,16 @@
     "guide": "User guide",
     "guideTooltip": "Open the full user guide (you can edit, add or delete content)"
   },
+  "ocr": {
+    "langAuto": "Auto",
+    "langVi": "Vietnamese + English",
+    "langViShort": "Vietnamese",
+    "langJa": "Japanese + English",
+    "langEn": "English",
+    "inspectorSubtitle": "Accurately supports Vietnamese, English & Japanese"
+  },
   "overlay": {
+    "textGrabBanner": "📑 Drag to extract text · Language: {{lang}} (Press 1–4 to switch)",
     "dragToSelect": "Drag to select area • Hover a window and click to capture it • Esc / right-click to cancel",
     "dragToSelectRecord": "Drag to select recording area • Esc / right-click to cancel",
     "cancel": "Cancel",

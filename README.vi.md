@@ -80,8 +80,8 @@ Quay vùng / cửa sổ / toàn màn hình, kèm **Micro**, **âm thanh hệ th�
 </p>
 
 ### 🔤 OCR & bảo vệ thông tin riêng tư
-- **OCR Tự động thông minh**: Nhận diện kết hợp đa ngôn ngữ (Tiếng Việt có dấu, English, 日本語, 中文) ngay trong cùng một bức ảnh, 100% offline.
-- **Text Grab (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>)**: Đổi nhanh ngôn ngữ bằng phím số <kbd>1</kbd>–<kbd>5</kbd> trên overlay, hoặc từ menu Capture Bar.
+- **OCR Tự động thông minh**: Nhận diện kết hợp đa ngôn ngữ (Tiếng Việt có dấu, English, 日本語) ngay trong cùng một bức ảnh, 100% offline.
+- **Text Grab (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>)**: Đổi nhanh ngôn ngữ bằng phím số <kbd>1</kbd>–<kbd>4</kbd> trên overlay, hoặc từ menu Capture Bar.
 - **Đọc mã QR tức thì**: Tự động nhận diện và sao chép nội dung mã QR trong vùng chọn mà không cần qua OCR.
 - **Đọc lại Text Grab (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>)**: Mở lại ảnh vừa grab trong Editor và tự bật OCR Inspector để tra cứu, đổi ngôn ngữ hoặc chỉnh sửa văn bản.
 - **Live Text**: chữ trên ảnh bôi đen/copy được như văn bản.

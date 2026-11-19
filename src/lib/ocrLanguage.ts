@@ -1,6 +1,6 @@
 import { ipc } from "./ipc";
 
-export type OcrLanguageMode = "auto" | "vi" | "en" | "ja" | "zh";
+export type OcrLanguageMode = "auto" | "vi" | "en" | "ja";
 
 export interface OcrLangPreset {
   id: OcrLanguageMode;
@@ -12,7 +12,7 @@ export interface OcrLangPreset {
 export const OCR_LANG_PRESETS: Record<OcrLanguageMode, OcrLangPreset> = {
   auto: {
     id: "auto",
-    label: "Tự động (Việt · Anh · 日本語 · 中文)",
+    label: "Tự động (Việt · Anh · 日本語)",
     flag: "🌐",
     codes: ["vie", "jpn", "eng"],
   },
@@ -28,12 +28,6 @@ export const OCR_LANG_PRESETS: Record<OcrLanguageMode, OcrLangPreset> = {
     flag: "🇯🇵",
     codes: ["jpn", "eng"],
   },
-  zh: {
-    id: "zh",
-    label: "中文 + English",
-    flag: "🇨🇳",
-    codes: ["chi_sim", "chi_tra", "eng"],
-  },
   en: {
     id: "en",
     label: "English only",
@@ -45,8 +39,8 @@ export const OCR_LANG_PRESETS: Record<OcrLanguageMode, OcrLangPreset> = {
 export const CJK_REGEX = /[\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uFF66-\uFF9F]/;
 
 export function normalizeOcrLang(mode: string | null | undefined): OcrLanguageMode {
-  if (!mode || mode === "all") return "auto";
-  if (mode === "auto" || mode === "vi" || mode === "en" || mode === "ja" || mode === "zh") {
+  if (!mode || mode === "all" || mode === "zh") return "auto";
+  if (mode === "auto" || mode === "vi" || mode === "en" || mode === "ja") {
     return mode;
   }
   return "auto";

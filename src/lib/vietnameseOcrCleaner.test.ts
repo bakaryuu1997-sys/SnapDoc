@@ -210,6 +210,6 @@ describe("OCR Language Normalizer (normalizeOcrLang)", () => {
     expect(normalizeOcrLang("vi")).toBe("vi");
     expect(normalizeOcrLang("ja")).toBe("ja");
     expect(normalizeOcrLang("en")).toBe("en");
-    expect(normalizeOcrLang("zh")).toBe("zh");
+    expect(normalizeOcrLang("zh")).toBe("auto");
   });
 });

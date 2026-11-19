@@ -171,10 +171,9 @@ export default function CaptureBar() {
       lastTextGrabDataUrlRef.current = dataUrl;
       const targetLang = lang || getSavedOcrLang();
       const langNames: Record<OcrLanguageMode, string> = {
-        auto: "Tự động",
-        vi: "Tiếng Việt",
+        auto: t("ocr.langAuto", "Tự động"),
+        vi: t("ocr.langViShort", "Tiếng Việt"),
         ja: "日本語",
-        zh: "中文",
         en: "English",
       };
       const langLabel = langNames[targetLang] || targetLang;

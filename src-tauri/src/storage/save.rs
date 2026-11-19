@@ -62,7 +62,8 @@ fn write_png_to(target: PathBuf, data: &str) -> Result<String, String> {
         .and_then(|e| e.to_str())
         .unwrap_or("png")
         .to_lowercase();
-    let (bytes_to_write, _) = match crate::capture::encode_formatted(&bytes, &ext, 90) {
+    let quality = crate::storage::settings::get_jpg_quality();
+    let (bytes_to_write, _) = match crate::capture::encode_formatted(&bytes, &ext, quality) {
         Ok(res) => res,
         Err(_) => (crate::capture::recompress_png(&bytes), "png"),
     };

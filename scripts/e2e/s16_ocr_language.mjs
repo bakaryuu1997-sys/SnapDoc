@@ -18,7 +18,7 @@ try {
   const hasOcrSection = /NGÔN NGỮ OCR|OCR LANGUAGE/i.test(popoverText);
   add("OCR-01a", "Menu Capture Bar có section NGÔN NGỮ OCR", hasOcrSection, popoverText.slice(0, 100));
 
-  // Kiểm tra 5 tùy chọn: Tự động, Tiếng Việt, 日本語, 中文, English
+  // Kiểm tra 4 tùy chọn: Tự động, Tiếng Việt, 日本語, English
   const hasAuto = /Tự động|Auto/i.test(popoverText);
   const hasJa = /日本語/i.test(popoverText);
   const hasVi = /Tiếng Việt/i.test(popoverText);

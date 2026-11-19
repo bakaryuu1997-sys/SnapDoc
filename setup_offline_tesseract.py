@@ -26,7 +26,5 @@ for b in bases:
     shutil.copy2(r'C:\Users\asus\snapdoc\vie_best.traineddata', os.path.join(lang_dir, 'vie.traineddata'))
     shutil.copy2(r'C:\Users\asus\snapdoc\eng.traineddata', os.path.join(lang_dir, 'eng.traineddata'))
     shutil.copy2(r'C:\Users\asus\snapdoc\jpn.traineddata', os.path.join(lang_dir, 'jpn.traineddata'))
-    shutil.copy2(r'C:\Users\asus\snapdoc\chi_sim.traineddata', os.path.join(lang_dir, 'chi_sim.traineddata'))
-    shutil.copy2(r'C:\Users\asus\snapdoc\chi_tra.traineddata', os.path.join(lang_dir, 'chi_tra.traineddata'))
 
-print("All Tesseract offline assets (worker, core, and 5 language models) copied successfully to both repos!")
+print("All Tesseract offline assets (worker, core, and 3 language models: vie, eng, jpn) copied successfully to both repos!")

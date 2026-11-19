@@ -438,8 +438,7 @@ function RegionSelect() {
         if (e.key === "1") newLang = "auto";
         else if (e.key === "2") newLang = "vi";
         else if (e.key === "3") newLang = "ja";
-        else if (e.key === "4") newLang = "zh";
-        else if (e.key === "5") newLang = "en";
+        else if (e.key === "4") newLang = "en";
         if (newLang) {
           e.preventDefault();
           setTextGrabLang(newLang);
@@ -706,17 +705,16 @@ function RegionSelect() {
         >
           <div style={banner}>
             {session.mode === "text-grab"
-              ? `📑 Kéo chọn vùng để trích xuất chữ · Ngôn ngữ: ${
-                  textGrabLang === "auto"
-                    ? "Tự động"
-                    : textGrabLang === "ja"
-                    ? "日本語"
-                    : textGrabLang === "zh"
-                    ? "中文"
-                    : textGrabLang === "vi"
-                    ? "Tiếng Việt"
-                    : "English"
-                } (phím 1–5 để đổi)`
+              ? t("overlay.textGrabBanner", "📑 Kéo chọn vùng để trích xuất chữ · Ngôn ngữ: {{lang}} (phím 1–4 để đổi)", {
+                  lang:
+                    textGrabLang === "auto"
+                      ? t("ocr.langAuto", "Tự động")
+                      : textGrabLang === "ja"
+                      ? "日本語"
+                      : textGrabLang === "vi"
+                      ? t("ocr.langViShort", "Tiếng Việt")
+                      : "English",
+                })
               : t("overlay.dragToSelect")}
           </div>
         </div>

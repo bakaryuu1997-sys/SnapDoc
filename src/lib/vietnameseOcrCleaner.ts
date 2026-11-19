@@ -403,7 +403,7 @@ export function cleanOcrText(text: string, langMode: OcrLanguageMode = "auto"): 
     return cleanVietnameseOcrText(text);
   }
 
-  // Với chế độ "auto" (hoặc "zh"): chọn bộ làm sạch THEO TỪNG DÒNG
+  // Với chế độ "auto": chọn bộ làm sạch THEO TỪNG DÒNG
   const lines = text.split("\n");
   const cleanedLines = lines.map((line) => {
     if (!line.trim()) return line;

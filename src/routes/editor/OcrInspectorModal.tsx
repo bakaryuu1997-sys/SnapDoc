@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   type OcrLanguageMode,
   OCR_LANG_PRESETS,
@@ -29,6 +30,7 @@ export default function OcrInspectorModal({
   onReRecognize,
   isRecognizing = false,
 }: OcrInspectorModalProps) {
+  const { t } = useTranslation();
   const [currentText, setCurrentText] = useState(initialText);
   const [searchQuery, setSearchQuery] = useState("");
   const [copied, setCopied] = useState(false);
@@ -108,7 +110,7 @@ export default function OcrInspectorModal({
                 )}
               </div>
               <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "var(--text-dim, #94a3b8)" }}>
-                Hỗ trợ chuẩn xác Tiếng Việt, Tiếng Anh, 日本語 (Tiếng Nhật) & 中文 (Tiếng Trung)
+                {t("ocr.inspectorSubtitle", "Hỗ trợ chuẩn xác Tiếng Việt, Tiếng Anh & 日本語 (Tiếng Nhật)")}
               </p>
             </div>
           </div>

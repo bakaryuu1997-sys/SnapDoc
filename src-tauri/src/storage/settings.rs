@@ -50,8 +50,8 @@ pub fn validate(v: &Value) -> Result<(), String> {
     if !one_of("format", &["png", "jpg", "webp"]) {
         return Err("`format` phải là png/jpg/webp".into());
     }
-    if !one_of("ocrLanguage", &["auto", "vi", "en", "ja", "zh"]) {
-        return Err("`ocrLanguage` phải là auto/vi/en/ja/zh".into());
+    if !one_of("ocrLanguage", &["auto", "vi", "en", "ja"]) {
+        return Err("`ocrLanguage` phải là auto/vi/en/ja".into());
     }
     if let Some(q) = obj.get("jpgQuality") {
         if !q.as_u64().map(|n| (50..=100).contains(&n)).unwrap_or(false) {
@@ -98,6 +98,13 @@ pub fn patch(config_dir: &PathBuf, patch: &Value) -> Result<Value, String> {
             }
         } else {
             cur[k] = v.clone();
+        }
+    }
+    if let Some(cur_obj) = cur.as_object_mut() {
+        if let Some(lang) = cur_obj.get("ocrLanguage").and_then(|v| v.as_str()) {
+            if lang == "zh" || lang == "all" {
+                cur_obj.insert("ocrLanguage".into(), Value::String("auto".into()));
+            }
         }
     }
     validate(&cur)?;
@@ -177,14 +184,32 @@ pub fn load(config_dir: &PathBuf) -> Value {
             }
         }
     }
-    let value = match std::fs::read_to_string(&path) {
+    let mut value: Value = match std::fs::read_to_string(&path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_else(|_| defaults()),
         Err(_) => defaults(),
     };
+    if let Some(obj) = value.as_object_mut() {
+        if let Some(lang) = obj.get("ocrLanguage").and_then(|v| v.as_str()) {
+            if lang == "zh" || lang == "all" {
+                obj.insert("ocrLanguage".into(), Value::String("auto".into()));
+            }
+        }
+    }
     if let Ok(mut guard) = cache().lock() {
         *guard = Some((path, value.clone()));
     }
     value
+}
+
+pub fn get_jpg_quality() -> u8 {
+    if let Ok(guard) = cache().lock() {
+        if let Some((_, val)) = guard.as_ref() {
+            if let Some(q) = val.get("jpgQuality").and_then(|v| v.as_u64()) {
+                return (q as u8).clamp(50, 100);
+            }
+        }
+    }
+    90
 }
 
 pub fn save(config_dir: &PathBuf, value: &Value) -> Result<(), String> {
@@ -310,5 +335,23 @@ mod tests {
             assert_eq!(v[format!("k{i}")], i, "mất cập nhật k{i}");
         }
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn ocr_language_zh_migrates_to_auto() {
+        let dir = std::env::temp_dir().join(format!("snapdoc-settings-zh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = settings_path(&dir);
+        std::fs::write(&file, r#"{"ocrLanguage":"zh"}"#).unwrap();
+
+        let loaded = load(&dir);
+        assert_eq!(loaded.get("ocrLanguage").and_then(|v| v.as_str()), Some("auto"));
+
+        // Thử patch có "zh" cũng tự đổi thành "auto" và không lỗi validation
+        let patched = patch(&dir, &json!({"ocrLanguage": "zh", "format": "png"})).unwrap();
+        assert_eq!(patched.get("ocrLanguage").and_then(|v| v.as_str()), Some("auto"));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

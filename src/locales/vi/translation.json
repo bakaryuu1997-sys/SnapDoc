@@ -254,7 +254,16 @@
     "guide": "Hướng dẫn sử dụng",
     "guideTooltip": "Mở hướng dẫn sử dụng đầy đủ (có thể tự sửa/thêm/xoá nội dung)"
   },
+  "ocr": {
+    "langAuto": "Tự động",
+    "langVi": "Tiếng Việt + English",
+    "langViShort": "Tiếng Việt",
+    "langJa": "日本語 + English",
+    "langEn": "English",
+    "inspectorSubtitle": "Hỗ trợ chuẩn xác Tiếng Việt, Tiếng Anh & 日本語 (Tiếng Nhật)"
+  },
   "overlay": {
+    "textGrabBanner": "📑 Kéo chọn vùng để trích xuất chữ · Ngôn ngữ: {{lang}} (phím 1–4 để đổi)",
     "dragToSelect": "Kéo để chọn vùng • Di chuột qua cửa sổ rồi click để chụp cả cửa sổ • Esc / chuột phải để huỷ",
     "dragToSelectRecord": "Kéo để chọn vùng quay • Esc / chuột phải để huỷ",
     "cancel": "Huỷ",

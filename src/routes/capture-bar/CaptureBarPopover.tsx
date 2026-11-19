@@ -42,11 +42,10 @@ export default function CaptureBarPopover() {
   ];
 
   const OCR_LANGUAGES: { id: OcrLanguageMode; label: string }[] = [
-    { id: "auto", label: "🌐 Tự động" },
-    { id: "vi",   label: "🇻🇳 Tiếng Việt + English" },
-    { id: "ja",   label: "🇯🇵 日本語 + English" },
-    { id: "zh",   label: "🇨🇳 中文 + English" },
-    { id: "en",   label: "🇺🇸 English" },
+    { id: "auto", label: `🌐 ${t("ocr.langAuto", "Tự động")}` },
+    { id: "vi",   label: `🇻🇳 ${t("ocr.langVi", "Tiếng Việt + English")}` },
+    { id: "ja",   label: `🇯🇵 ${t("ocr.langJa", "日本語 + English")}` },
+    { id: "en",   label: `🇺🇸 ${t("ocr.langEn", "English")}` },
   ];
 
   const refreshSettings = () => {
