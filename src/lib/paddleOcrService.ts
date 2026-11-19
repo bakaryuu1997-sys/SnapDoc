@@ -161,7 +161,7 @@ async function getCjkOcrService(): Promise<PaddleOcrService> {
         fetch("/models/paddleocr/ppocrv5_dict.txt").then((r) => r.text()),
       ]);
 
-      const dictLines = dictText.trimEnd().split(/\r?\n/);
+      const dictLines = [...dictText.trimEnd().split(/\r?\n/), " "];
       cjkOcrInstance = await PaddleOcrService.createInstance({
         ort: ort as any,
         modelPreset: "PP-OCRv5_mobile",
@@ -431,7 +431,8 @@ async function recognizeBoxWithVieVi(
   origW: number,
   origH: number,
   rawRgba: Uint8ClampedArray,
-  recViSession: ort.InferenceSession
+  recViSession: ort.InferenceSession,
+  errorRef?: { lastError?: string }
 ): Promise<OcrLine | null> {
   const bx = Math.max(0, Math.round(box.x) - 2);
   const by = Math.max(0, Math.round(box.y) - 2);
@@ -550,8 +551,11 @@ async function recognizeBoxWithVieVi(
       columnId: box.columnId ?? 0,
       words: lineWords,
     };
-  } catch (err) {
+  } catch (err: any) {
     console.warn("[SnapDoc OCR] Nhận diện box VieSVTR lỗi:", err);
+    if (errorRef) {
+      errorRef.lastError = err?.message || String(err);
+    }
     return null;
   }
 }
@@ -785,6 +789,8 @@ async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode 
 
   const recognizedLinesRaw: (OcrLine | null)[] = new Array(sortedBoxes.length).fill(null);
 
+  const errorRef = { lastError: undefined as string | undefined };
+
   // Tuần tự nhận diện từng box bằng hàm dùng chung recognizeBoxWithVieVi
   for (let idx = 0; idx < sortedBoxes.length; idx++) {
     recognizedLinesRaw[idx] = await recognizeBoxWithVieVi(
@@ -792,7 +798,8 @@ async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode 
       origW,
       origH,
       rawRgba,
-      recViSession
+      recViSession,
+      errorRef
     );
   }
 
@@ -800,6 +807,9 @@ async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode 
   if (validLines.length === 0) {
     if (detectedBoxes.length === 0) {
       throw new Error("DBNet không phát hiện được hộp văn bản nào trong ảnh (0 boxes)");
+    }
+    if (errorRef.lastError) {
+      throw new Error(`VieSVTR nhận diện box lỗi: ${errorRef.lastError}`);
     }
     throw new Error("Không có dòng chữ nào đạt ngưỡng độ tin cậy (>35%)");
   }
