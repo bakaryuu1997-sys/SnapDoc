@@ -125,6 +125,37 @@ export function groupLinesIntoColumns(lines: RenderLine[]): RenderColumn[] {
  * Gom các từ thành từng dòng nếu chưa có lines từ DBNet (fallback dự phòng)
  * Hỗ trợ nhận diện cột (Sidebar vs Main Content) và gom liền mạch toàn bộ các từ trong dòng.
  */
+/**
+ * Cột chứa điểm (x, y) — hệ toạ độ ẢNH GỐC. Dùng khi bắt đầu bôi đen để khoá
+ * các cột khác: nếu không, nhấn vào khoảng trống (lề, dấu chấm đầu dòng) làm
+ * trình duyệt neo vùng chọn vào một chữ bất kỳ ở cột khác (vd Sidebar) và
+ * vùng bôi đen tràn lung tung.
+ * - Nhiều cột cùng chứa điểm → lấy cột nhỏ nhất (cột cụ thể nhất).
+ * - Không cột nào chứa điểm → cột gần nhất nếu cách dưới `maxGap` px.
+ */
+export function pickColumnAt(columns: RenderColumn[], x: number, y: number, maxGap = 24): string | null {
+  let best: RenderColumn | null = null;
+  for (const c of columns) {
+    if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
+      if (!best || c.w * c.h < best.w * best.h) best = c;
+    }
+  }
+  if (best) return best.id;
+
+  let nearest: RenderColumn | null = null;
+  let nearestDist = Infinity;
+  for (const c of columns) {
+    const dx = Math.max(c.x - x, 0, x - (c.x + c.w));
+    const dy = Math.max(c.y - y, 0, y - (c.y + c.h));
+    const d = Math.hypot(dx, dy);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearest = c;
+    }
+  }
+  return nearest && nearestDist <= maxGap ? nearest.id : null;
+}
+
 export function groupWordsIntoLinesFallback(words: OcrWord[]): RenderLine[] {
   if (!words || words.length === 0) return [];
 
@@ -361,6 +392,11 @@ export default function LiveTextOverlay({
 
   // Marquee / Box Selection: Kéo hộp chữ nhật tự do để chọn vùng chữ bất kỳ
   const [boxSelectMode, setBoxSelectMode] = useState(false);
+  // Cột đang được bôi đen (chọn lúc nhấn chuột). Các cột khác bị tắt user-select
+  // để vùng chọn không tràn sang Sidebar / panel bên cạnh. null = không khoá.
+  const [activeColId, setActiveColId] = useState<string | null>(null);
+  const colUserSelect = (colId: string): "none" | "text" =>
+    boxSelectMode || (activeColId !== null && activeColId !== colId) ? "none" : "text";
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [marqueeWords, setMarqueeWords] = useState<OcrWord[]>([]);
   const isDraggingMarquee = useRef(false);
@@ -589,7 +625,16 @@ export default function LiveTextOverlay({
       setMarqueeWords([]);
     }
 
-    if (!boxSelectMode) return;
+    if (!boxSelectMode) {
+      // Khoá bôi đen trong đúng cột chứa điểm nhấn (xem `pickColumnAt`). React
+      // commit đồng bộ cho sự kiện mousedown nên các cột khác đã là
+      // user-select:none trước khi trình duyệt bắt đầu vùng chọn.
+      if (containerRef.current) {
+        const cr = containerRef.current.getBoundingClientRect();
+        setActiveColId(pickColumnAt(columns, (e.clientX - cr.left) / scale, (e.clientY - cr.top) / scale));
+      }
+      return;
+    }
 
     // Bắt đầu kéo khung chọn marquee chữ nhật
     e.preventDefault();
@@ -867,7 +912,7 @@ export default function LiveTextOverlay({
               width: `${col.w * scale}px`,
               height: `${col.h * scale}px`,
               pointerEvents: boxSelectMode ? "none" : "auto",
-              userSelect: boxSelectMode ? "none" : "text",
+              userSelect: colUserSelect(col.id),
               cursor: boxSelectMode ? "crosshair" : "text",
               overflow: "visible",
             }}
@@ -893,7 +938,7 @@ export default function LiveTextOverlay({
                     fontFamily: 'Consolas, "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", monospace, sans-serif',
                     color: "transparent",
                     overflow: "visible",
-                    userSelect: boxSelectMode ? "none" : "text",
+                    userSelect: colUserSelect(col.id),
                     cursor: boxSelectMode ? "crosshair" : "text",
                     boxSizing: "border-box",
                     pointerEvents: boxSelectMode ? "none" : "auto",
@@ -922,7 +967,7 @@ export default function LiveTextOverlay({
                           height: `${wordHeight}px`,
                           lineHeight: `${wordHeight}px`,
                           color: "transparent",
-                          userSelect: boxSelectMode ? "none" : "text",
+                          userSelect: colUserSelect(col.id),
                           cursor: boxSelectMode ? "crosshair" : "text",
                           background: isMarqueeSelected ? "rgba(59, 130, 246, 0.45)" : undefined,
                           boxSizing: "border-box",

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   groupLinesIntoColumns,
+  pickColumnAt,
+  type RenderColumn,
   groupWordsIntoLinesFallback,
   formatWordsToText,
   type RenderLine,
@@ -262,5 +264,33 @@ describe("LiveTextOverlay - Column Isolation & Line Count Fidelity", () => {
     expect(processed.lines![0].words.length).toBeGreaterThan(1);
     expect(processed.words.length).toBe(processed.lines![0].words.length);
     expect(processed.lines![0].words.map((w) => w.text)).toEqual(processed.words.map((w) => w.text));
+  });
+});
+
+describe("LiveTextOverlay - pickColumnAt (chọn cột khi bắt đầu bôi đen)", () => {
+  const col = (id: string, x: number, y: number, w: number, h: number): RenderColumn => ({ id, x, y, w, h, lines: [] });
+  const sidebar = col("sidebar", 230, 200, 240, 800);
+  const main = col("main", 495, 330, 650, 600);
+  const right = col("right", 1160, 200, 450, 450);
+  const cols = [sidebar, main, right];
+
+  it("trả về cột chứa điểm nhấn chuột", () => {
+    expect(pickColumnAt(cols, 600, 400)).toBe("main");
+    expect(pickColumnAt(cols, 300, 500)).toBe("sidebar");
+    expect(pickColumnAt(cols, 1300, 400)).toBe("right");
+  });
+
+  it("nhấn vào lề/dấu chấm đầu dòng sát cạnh cột vẫn chọn đúng cột đó", () => {
+    expect(pickColumnAt(cols, 485, 400)).toBe("main");
+  });
+
+  it("ưu tiên cột nhỏ nhất khi các cột chồng lên nhau", () => {
+    const header = col("header", 230, 120, 1400, 900);
+    expect(pickColumnAt([header, main], 600, 400)).toBe("main");
+  });
+
+  it("trả về null khi nhấn quá xa mọi cột", () => {
+    expect(pickColumnAt(cols, 50, 1150)).toBeNull();
+    expect(pickColumnAt([], 10, 10)).toBeNull();
   });
 });
