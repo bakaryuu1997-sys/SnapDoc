@@ -76,6 +76,20 @@ async function fetchArrayBuffer(path: string): Promise<ArrayBuffer> {
  * Khởi tạo singleton DetectionService (DBNet detector, ~4.8MB)
  * Cấu hình maxSideLength: 1920 để nhận diện hoàn hảo cả các text cực nhỏ như badges, timestamps, buttons
  */
+/**
+ * Thông số dò dòng chữ cho ẢNH CHỤP MÀN HÌNH (chữ nhỏ 12–14px, dòng sát nhau).
+ * Dùng chung cho cả DBNet (chế độ vi/en) lẫn pipeline CJK (chế độ ja/auto): với
+ * mặc định của preset PP-OCRv5, thư viện thu ảnh về cạnh dài ~960px nên bỏ sót
+ * rất nhiều dòng chữ nhỏ trên ảnh 1920px → Live Text thiếu khung, bôi đen nhảy lung tung.
+ */
+const SCREEN_DETECTION_OPTIONS = {
+  maxSideLength: 1920,
+  textPixelThreshold: 0.25,
+  boxScoreThreshold: 0.35,
+  unclipRatio: 1.6,
+  minimumAreaThreshold: 10,
+};
+
 async function getDetectionService(): Promise<DetectionService> {
   if (detServiceInstance) return detServiceInstance;
   if (detInitPromise) return await detInitPromise;
@@ -87,11 +101,7 @@ async function getDetectionService(): Promise<DetectionService> {
       const detBuffer = await fetchArrayBuffer("/models/paddleocr/det.onnx");
       const detSession = await ort.InferenceSession.create(new Uint8Array(detBuffer), sessionOptions);
       detServiceInstance = new DetectionService(ort as any, detSession as any, {
-        maxSideLength: 1920,
-        textPixelThreshold: 0.25,
-        boxScoreThreshold: 0.35,
-        unclipRatio: 1.6,
-        minimumAreaThreshold: 10,
+        ...SCREEN_DETECTION_OPTIONS,
       });
       console.log("[SnapDoc OCR] DBNet detector đã sẵn sàng!");
       return detServiceInstance;
@@ -168,6 +178,7 @@ async function getCjkOcrService(): Promise<PaddleOcrService> {
         modelPreset: "PP-OCRv5_mobile",
         detection: {
           modelBuffer: detBuffer,
+          ...SCREEN_DETECTION_OPTIONS,
         },
         recognition: {
           modelBuffer: recBuffer,
