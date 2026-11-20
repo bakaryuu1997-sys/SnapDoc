@@ -81,6 +81,8 @@ export default function CaptureBar() {
   const [activeGroup, setActiveGroup] = useState<ActiveGroup>("photo");
   const [output, setOutput] = useState<OutputMode>("editor");
   const lastTextGrabDataUrlRef = useRef<string | null>(null);
+  const pendingRedoRef = useRef(false);
+  const pendingRedoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shortcuts, setShortcuts] = useState<Record<string, string>>({
     quick: "CmdOrCtrl+Shift+X",
     record: "CmdOrCtrl+Shift+R",
@@ -247,14 +249,28 @@ export default function CaptureBar() {
         );
         return;
       }
+      // Đánh dấu đang chờ Editor nhận ảnh. Chỉ khi cờ này bật thì mới trả ảnh cho
+      // Editor vừa mount — tránh Editor bị tạo lại về sau (crash/reload) lại tự
+      // mở ảnh Text Grab cũ đè lên ảnh chụp mới.
+      pendingRedoRef.current = true;
+      if (pendingRedoTimerRef.current) clearTimeout(pendingRedoTimerRef.current);
+      pendingRedoTimerRef.current = setTimeout(() => {
+        pendingRedoRef.current = false;
+      }, 15000);
       await ipc.openEditor().catch(() => {});
       // Gửi ngay cho trường hợp Editor đã mở sẵn
       emit("open-image-ocr", { dataUrl: lastUrl }).catch(() => {});
     });
 
-    // Lắng nghe khi Editor báo sẵn sàng (lần đầu mount hoặc phục hồi)
+    // Editor báo đã nhận ảnh → không cần gửi lại nữa
+    const unlistenRedoReceived = listen("text-grab-redo-received", () => {
+      pendingRedoRef.current = false;
+    });
+
+    // Editor vừa mount (lần đầu hoặc được tạo lại) xin dữ liệu: chỉ gửi khi đang
+    // có một yêu cầu Ctrl+Shift+Y chưa được nhận.
     const unlistenEditorReq = listen("request-text-grab-redo-data", () => {
-      if (lastTextGrabDataUrlRef.current) {
+      if (pendingRedoRef.current && lastTextGrabDataUrlRef.current) {
         emit("open-image-ocr", { dataUrl: lastTextGrabDataUrlRef.current }).catch(() => {});
       }
     });
@@ -292,6 +308,8 @@ export default function CaptureBar() {
       unlistenTextGrab.then((fn) => fn());
       unlistenTextGrabRedo.then((fn) => fn());
       unlistenEditorReq.then((fn) => fn());
+      unlistenRedoReceived.then((fn) => fn());
+      if (pendingRedoTimerRef.current) clearTimeout(pendingRedoTimerRef.current);
       unlistenRecordMode.then((fn) => fn());
       unlistenSettings.then((fn) => fn());
     };

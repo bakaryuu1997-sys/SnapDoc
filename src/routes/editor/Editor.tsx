@@ -600,6 +600,7 @@ export default function Editor() {
     const unOpenImageOcr = listen<{ dataUrl: string }>("open-image-ocr", async (e) => {
       const url = e.payload?.dataUrl;
       if (!url) return;
+      emit("text-grab-redo-received").catch(() => {});
       suspendActive();
       setVideoDoc(null);
       loadFromUrl(url);
