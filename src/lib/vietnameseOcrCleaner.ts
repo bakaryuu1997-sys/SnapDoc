@@ -338,27 +338,30 @@ export function cleanJapaneseOcrText(text: string): string {
   res = res.replace(/｢/g, "「");
   res = res.replace(/｣/g, "」");
 
+  // Các bước 2–5 chỉ xoá khoảng trắng NGANG ([ \t\u3000]). KHÔNG dùng `\s`:
+  // `\s` khớp cả xuống dòng nên sẽ gộp mọi dòng tiếng Nhật thành một dòng liền.
+
   // 2. Xóa khoảng trắng nhân tạo giữa 2 ký tự CJK (Kanji, Hiragana, Katakana)
   // Ví dụ: "プ ロ ジ ェ ク ト" -> "プロジェクト", "設 計 書" -> "設計書", "画 面" -> "画面"
   res = res.replace(
-    /([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])\s+([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gu,
+    /([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])[ \t\u3000]+([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gu,
     "$1$2"
   );
   res = res.replace(
-    /([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])\s+([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gu,
+    /([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])[ \t\u3000]+([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gu,
     "$1$2"
   );
 
   // 3. Xóa khoảng trắng nhân tạo giữa các chữ cái viết tắt tiếng Anh (Acronyms: U I -> UI, O C R -> OCR, A P I -> API)
-  res = res.replace(/([A-Z])\s+([A-Z])(?=[\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]|$)/gu, "$1$2");
-  res = res.replace(/([A-Z])\s+([A-Z])(?=[\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]|$)/gu, "$1$2");
+  res = res.replace(/([A-Z])[ \t\u3000]+([A-Z])(?=[\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]|$)/gu, "$1$2");
+  res = res.replace(/([A-Z])[ \t\u3000]+([A-Z])(?=[\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]|$)/gu, "$1$2");
 
   // 4. Xóa khoảng trắng giữa CJK và acronym tiếng Anh nếu bị Tesseract chèn
-  res = res.replace(/([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])\s+([A-Z]{2,4})(?=[\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]|$)/gu, "$1$2");
-  res = res.replace(/([A-Z]{2,4})\s+([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gu, "$1$2");
+  res = res.replace(/([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])[ \t\u3000]+([A-Z]{2,4})(?=[\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]|$)/gu, "$1$2");
+  res = res.replace(/([A-Z]{2,4})[ \t\u3000]+([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gu, "$1$2");
 
   // 5. Chuẩn hóa khoảng trắng quanh dấu ngoặc và dấu câu tiếng Nhật
-  res = res.replace(/\s*([、。・「」『』（）])\s*/g, "$1");
+  res = res.replace(/[ \t\u3000]*([、。・「」『』（）])[ \t\u3000]*/g, "$1");
 
   // 6. Chuẩn hóa khoảng trắng đa khoảng trắng
   res = res.replace(/[ \t]{2,}/g, " ");

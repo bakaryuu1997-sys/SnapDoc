@@ -143,6 +143,20 @@ describe("Japanese OCR Cleaner (cleanJapaneseOcrText)", () => {
     const cleaned = cleanJapaneseOcrText(input);
     expect(cleaned).toBe("設定、画面。プロジェクト・管理「重要」");
   });
+
+  it("giữ nguyên xuống dòng giữa các dòng tiếng Nhật (không gộp thành 1 dòng)", () => {
+    const input = "プロジェクト設計書\n画面遷移図と機能一覧\n保存ボタンをクリックしてください";
+    expect(cleanJapaneseOcrText(input)).toBe(input);
+  });
+
+  it("giữ xuống dòng khi dòng kết thúc bằng dấu câu hoặc là chữ viết tắt", () => {
+    expect(cleanJapaneseOcrText("保存しました。\n次へ")).toBe("保存しました。\n次へ");
+    expect(cleanJapaneseOcrText("画面 UI\n設計")).toBe("画面UI\n設計");
+  });
+
+  it("vẫn xoá khoảng trắng toàn góc (U+3000) giữa các ký tự Nhật", () => {
+    expect(cleanJapaneseOcrText("設　計　書")).toBe("設計書");
+  });
 });
 
 describe("English OCR Cleaner (cleanEnglishOcrText)", () => {
