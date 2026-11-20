@@ -3,6 +3,7 @@ import { DetectionService, PaddleOcrService, Image as PaddleImage } from "paddle
 import type { OcrResult, OcrWord, OcrLine } from "./ipc";
 import { cleanVietnameseOcrText, cleanOcrText } from "./vietnameseOcrCleaner";
 import { type OcrLanguageMode, CJK_REGEX } from "./ocrLanguage";
+import { isMixedCjkLatinLine, mergeMixedLine } from "./mixedLineMerge";
 
 export type { OcrLanguageMode };
 
@@ -432,7 +433,10 @@ async function recognizeBoxWithVieVi(
   origH: number,
   rawRgba: Uint8ClampedArray,
   recViSession: ort.InferenceSession,
-  errorRef?: { lastError?: string }
+  errorRef?: { lastError?: string },
+  /** Dòng trộn Việt + Nhật truyền 0: phần chữ Nhật kéo độ tin cậy xuống nhưng
+   *  vẫn cần phần chữ Việt có dấu để ghép (xem `mixedLineMerge.ts`). */
+  minConfidence = 0.40
 ): Promise<OcrLine | null> {
   const bx = Math.max(0, Math.round(box.x) - 2);
   const by = Math.max(0, Math.round(box.y) - 2);
@@ -513,7 +517,7 @@ async function recognizeBoxWithVieVi(
     const numClasses = dims[2] || 230;
 
     const { text: rawLineText, confidence } = decodeCtcGreedy(logitsData, seqLen, numClasses);
-    if (confidence < 0.40) {
+    if (confidence < minConfidence) {
       return null;
     }
     const lineText = cleanVietnameseOcrText(rawLineText);
@@ -685,16 +689,24 @@ async function doRecognizePaddleOcr(imageUrl: string, langMode: OcrLanguageMode 
       const isCjk = CJK_REGEX.test(cjkText);
 
       if (isCjk && cjkText.length > 0) {
-        // Giữ nguyên kết quả CJK
+        // Giữ kết quả CJK. Riêng dòng trộn Việt + Nhật: đọc thêm bằng VieSVTR rồi
+        // ghép theo từ để lấy lại dấu tiếng Việt (model CJK làm mất dấu).
+        let lineText = cjkText;
+        if (isMixedCjkLatinLine(cjkText)) {
+          const viLine = await recognizeBoxWithVieVi(box, origW, origH, rawRgba, recViSession, undefined, 0);
+          if (viLine && viLine.text.trim().length > 0) {
+            lineText = mergeMixedLine(cjkText, viLine.text);
+          }
+        }
         const words: OcrWord[] = [{
-          text: cjkText,
+          text: lineText,
           x: Math.round(box.x),
           y: Math.round(box.y),
           w: Math.round(box.width),
           h: Math.round(box.height),
         }];
         recognizedLines.push({
-          text: cjkText,
+          text: lineText,
           x: Math.round(box.x),
           y: Math.round(box.y),
           w: Math.round(box.width),
